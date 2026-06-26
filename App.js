@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
+import { Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
@@ -14,9 +15,15 @@ import SummaryScreen       from './src/screens/SummaryScreen';
 
 const Stack = createStackNavigator();
 
+// On web, flex:1 doesn't fill the viewport unless the root has an explicit height.
+const rootStyle = {
+  flex: 1,
+  ...(Platform.OS === 'web' && { height: '100vh', overflow: 'hidden' }),
+};
+
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={rootStyle}>
       <SafeAreaProvider>
         <NavigationContainer>
           <StatusBar style="light" backgroundColor={Colors.background} />

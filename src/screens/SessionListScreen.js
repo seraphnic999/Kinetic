@@ -7,6 +7,26 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { loadSessions, saveSessions } from '../utils/storage';
+import { EXERCISE_TYPES } from '../data/exercises';
+
+// Derive unique body areas covered by a session's exercises
+const getBodyAreas = (exercises) => {
+  const areas = new Set();
+  exercises?.forEach(ex => {
+    if (ex.type === EXERCISE_TYPES.REGULAR && ex.bodySection) {
+      areas.add(ex.bodySection);
+    } else if (ex.type === EXERCISE_TYPES.COMBO) {
+      ex.subExercises?.forEach(sub => {
+        if (sub.bodySection) areas.add(sub.bodySection);
+      });
+    } else if (ex.type === EXERCISE_TYPES.WARMUP) {
+      areas.add('🔥 Warmup');
+    } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
+      areas.add('⚡ Intervals');
+    }
+  });
+  return Array.from(areas);
+};
 
 export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
@@ -36,71 +56,64 @@ export default function SessionListScreen({ navigation }) {
     );
   };
 
-  const handleStartSession = (session) => {
-    navigation.navigate('Training', { session });
-  };
+  const renderSession = ({ item }) => {
+    const bodyAreas = getBodyAreas(item.exercises);
+    return (
+      <View style={styles.card}>
+        <View style={styles.cardContent}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.sessionName}>{item.name}</Text>
+            <Text style={styles.exerciseCount}>
+              {item.exercises?.length ?? 0} exercise{item.exercises?.length !== 1 ? 's' : ''}
+            </Text>
+          </View>
 
-  const renderSession = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardContent}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.sessionName}>{item.name}</Text>
-          <Text style={styles.exerciseCount}>
-            {item.exercises?.length ?? 0} exercise{item.exercises?.length !== 1 ? 's' : ''}
-          </Text>
+          {/* Body area chips */}
+          {bodyAreas.length > 0 && (
+            <View style={styles.chipRow}>
+              {bodyAreas.map((area, idx) => (
+                <View key={idx} style={[
+                  styles.chip,
+                  area === '🔥 Warmup'    && styles.chipWarmup,
+                  area === '⚡ Intervals' && styles.chipIntervals,
+                ]}>
+                  <Text style={styles.chipText} numberOfLines={1}>{area}</Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
-        {/* Exercise preview chips */}
-        {item.exercises?.length > 0 && (
-          <View style={styles.chipRow}>
-            {item.exercises.slice(0, 4).map((ex, idx) => (
-              <View key={idx} style={styles.chip}>
-                <Text style={styles.chipText} numberOfLines={1}>
-                  {ex.type === 'warmup' ? '🔥 Warmup' :
-                   ex.type === 'intervals' ? '⚡ Intervals' :
-                   ex.type === 'combo' ? `🔗 ${ex.name}` :
-                   ex.name}
-                </Text>
-              </View>
-            ))}
-            {item.exercises.length > 4 && (
-              <View style={styles.chipMore}>
-                <Text style={styles.chipMoreText}>+{item.exercises.length - 4}</Text>
-              </View>
-            )}
-          </View>
-        )}
+        {/* Actions */}
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() => navigation.navigate('SessionEditor', { session: item })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="pencil" size={18} color={Colors.textSecondary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.deleteBtn}
+            onPress={() => handleDelete(item.id, item.name)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.startBtn}
+            onPress={() => navigation.navigate('Training', { session: item })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="play" size={18} color={Colors.background} />
+            <Text style={styles.startBtnText}>Start</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      {/* Actions */}
-      <View style={styles.cardActions}>
-        <TouchableOpacity
-          style={styles.editBtn}
-          onPress={() => navigation.navigate('SessionEditor', { session: item })}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="pencil" size={18} color={Colors.textSecondary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.deleteBtn}
-          onPress={() => handleDelete(item.id, item.name)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="trash-outline" size={18} color={Colors.danger} />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.startBtn}
-          onPress={() => handleStartSession(item)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="play" size={18} color={Colors.background} />
-          <Text style={styles.startBtnText}>Start</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -225,21 +238,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
-    maxWidth: 140,
+  },
+  chipWarmup: {
+    backgroundColor: `${Colors.amber}33`,
+  },
+  chipIntervals: {
+    backgroundColor: `${Colors.primary}22`,
   },
   chipText: {
     ...Typography.caption,
     color: Colors.textSecondary,
-  },
-  chipMore: {
-    backgroundColor: Colors.primaryDim,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-  },
-  chipMoreText: {
-    ...Typography.caption,
-    color: Colors.primary,
     fontWeight: '600',
   },
   cardActions: {
@@ -282,8 +290,6 @@ const styles = StyleSheet.create({
     color: Colors.background,
     fontWeight: '700',
   },
-
-  // Empty state
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -291,20 +297,11 @@ const styles = StyleSheet.create({
     padding: Spacing.xxl,
     gap: Spacing.md,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: Spacing.sm,
-  },
-  emptyTitle: {
-    ...Typography.h2,
-    color: Colors.textPrimary,
-    textAlign: 'center',
-  },
+  emptyIcon: { fontSize: 64, marginBottom: Spacing.sm },
+  emptyTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
   emptySubtitle: {
-    ...Typography.body,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 24,
+    ...Typography.body, color: Colors.textSecondary,
+    textAlign: 'center', lineHeight: 24,
   },
   emptyBtn: {
     marginTop: Spacing.sm,
@@ -314,9 +311,5 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     ...Shadows.orange,
   },
-  emptyBtnText: {
-    ...Typography.h3,
-    color: Colors.background,
-    fontWeight: '700',
-  },
+  emptyBtnText: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 });

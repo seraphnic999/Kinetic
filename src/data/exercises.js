@@ -32,6 +32,7 @@ export const EXERCISES_BY_SECTION = {
     'T-Bar Row',
     'Single-Arm Dumbbell Row',
     'Face Pull',
+    'Dumbbell Pullover',
     'Other',
   ],
   Shoulders: [

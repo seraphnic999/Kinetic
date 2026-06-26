@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   Alert, ScrollView, SafeAreaView, StatusBar, Modal,
-  FlatList,
+  FlatList, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { loadSessions, saveSessions, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES } from '../data/exercises';
+import { formatTime } from '../utils/time';
 
 // ---------- Sub-component: Numeric Stepper ----------
 function Stepper({ value, onChange, min = 0, max = 999, label }) {
@@ -284,11 +285,11 @@ const newCombo = () => ({
 });
 const newWarmup = () => ({
   id: generateId(), type: EXERCISE_TYPES.WARMUP,
-  warmupType: 'Treadmill', duration: 10,
+  warmupType: 'Treadmill', duration: 3,
 });
 const newIntervals = () => ({
   id: generateId(), type: EXERCISE_TYPES.INTERVALS,
-  reps: 5, intervalLength: 60,
+  reps: 8, intervalLength: 45,
 });
 
 // ---------- Main Screen ----------
@@ -346,17 +347,25 @@ export default function SessionEditorScreen({ navigation, route }) {
         Alert.alert('Warmup already added', 'A session can only have one warmup.');
         return;
       }
-      setExercises(prev => [newWarmup(), ...prev]);
+      const wu = newWarmup();
+      setExercises(prev => [wu, ...prev]);
+      setExpandedId(wu.id);
     } else if (type === EXERCISE_TYPES.INTERVALS) {
       if (exercises.some(e => e.type === EXERCISE_TYPES.INTERVALS)) {
         Alert.alert('Intervals already added', 'A session can only have one intervals block.');
         return;
       }
-      setExercises(prev => [...prev, newIntervals()]);
+      const iv = newIntervals();
+      setExercises(prev => [...prev, iv]);
+      setExpandedId(iv.id);
     } else if (type === EXERCISE_TYPES.COMBO) {
-      setExercises(prev => [...prev, newCombo()]);
+      const cb = newCombo();
+      setExercises(prev => [...prev, cb]);
+      setExpandedId(cb.id);
     } else {
-      setExercises(prev => [...prev, newRegular()]);
+      const ex = newRegular();
+      setExercises(prev => [...prev, ex]);
+      setExpandedId(ex.id);
     }
   };
 
@@ -439,9 +448,7 @@ export default function SessionEditorScreen({ navigation, route }) {
               max={600}
             />
             <Text style={styles.restTimerHint}>
-              {Math.floor(restTimerSecs / 60) > 0
-                ? `${Math.floor(restTimerSecs / 60)}m ${restTimerSecs % 60}s`
-                : `${restTimerSecs}s`}
+              {formatTime(restTimerSecs)}
             </Text>
           </View>
         </View>
@@ -679,7 +686,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: Spacing.lg,
   },
   restTimerHint: {
-    ...Typography.h3, color: Colors.amber, flex: 1,
+    ...Typography.timerMedium,
+    color: Colors.amber,
+    flex: 1,
+    fontFamily: Platform.select({ web: '"Courier New", Courier, monospace', default: 'monospace' }),
+    letterSpacing: 2,
   },
   emptyExercises: {
     padding: Spacing.lg, backgroundColor: Colors.surface,
