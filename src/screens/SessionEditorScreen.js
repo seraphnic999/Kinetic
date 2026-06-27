@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Alert, ScrollView, SafeAreaView, StatusBar, Modal,
-  FlatList, Platform,
+  Alert, ScrollView, StatusBar, Modal,
+  FlatList, Platform, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
@@ -295,6 +295,7 @@ const newIntervals = () => ({
 // ---------- Main Screen ----------
 export default function SessionEditorScreen({ navigation, route }) {
   const existingSession = route.params?.session ?? null;
+  const { height: windowHeight } = useWindowDimensions();
 
   const [sessionName, setSessionName] = useState(existingSession?.name ?? '');
   const [restTimerSecs, setRestTimerSecs] = useState(existingSession?.restTimerSecs ?? 60);
@@ -405,7 +406,7 @@ export default function SessionEditorScreen({ navigation, route }) {
     ex.type !== EXERCISE_TYPES.WARMUP && ex.type !== EXERCISE_TYPES.INTERVALS;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, Platform.OS === 'web' && { height: windowHeight }]}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Nav Header */}
@@ -630,7 +631,7 @@ export default function SessionEditorScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -662,7 +663,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-    ...(Platform.OS === 'web' && { height: '100vh' }),
   },
   navHeader: {
     flexDirection: 'row', alignItems: 'center',
