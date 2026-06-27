@@ -5,7 +5,7 @@ import {
   FlatList, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { loadSessions, saveSessions, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES } from '../data/exercises';
 import { formatTime } from '../utils/time';
@@ -659,7 +659,11 @@ const menuStyles = StyleSheet.create({
 });
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+    ...(Platform.OS === 'web' && { height: '100vh' }),
+  },
   navHeader: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
@@ -672,7 +676,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs + 2, borderRadius: Radius.full,
   },
   saveBtnText: { ...Typography.label, color: Colors.background, textTransform: 'none', fontSize: 15 },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, ...(Platform.OS === 'web' && { overflow: 'scroll' }) },
   scrollContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.lg },
   section: { gap: Spacing.sm },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary },
@@ -689,7 +693,7 @@ const styles = StyleSheet.create({
     ...Typography.timerMedium,
     color: Colors.amber,
     flex: 1,
-    fontFamily: Platform.select({ web: '"Courier New", Courier, monospace', default: 'monospace' }),
+    fontFamily: DIGITAL_FONT,
     letterSpacing: 2,
   },
   emptyExercises: {

@@ -2,6 +2,9 @@
 // Warm-dark palette: near-black base, ember orange primary, amber/gold accents
 // Cool blue for rest timer (intentional contrast that makes it "pop" against warm tones)
 
+// DSEG7Classic — authentic 7-segment LCD display font, loaded in App.js
+export const DIGITAL_FONT = 'DSEG7Classic';
+
 export const Colors = {
   // Backgrounds
   background:     '#0D0D0D',  // near-black base
