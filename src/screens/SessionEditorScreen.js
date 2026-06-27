@@ -676,7 +676,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs + 2, borderRadius: Radius.full,
   },
   saveBtnText: { ...Typography.label, color: Colors.background, textTransform: 'none', fontSize: 15 },
-  scroll: { flex: 1, ...(Platform.OS === 'web' && { overflow: 'scroll' }) },
+  scroll: {
+    flex: 1,
+    minHeight: 0, // critical for flex-based scroll containment on web
+  },
   scrollContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.lg },
   section: { gap: Spacing.sm },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary },
