@@ -2,35 +2,31 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// The version of @react-native/babel-plugin-codegen bundled inside
-// babel-preset-expo cannot parse newer NativeComponent spec formats used by:
-//   - react-native@0.85.x  (src/private/*)
-//   - react-native-screens@4.25.x (src/fabric/*)
-//   - ...and potentially other packages as they adopt new-arch specs
+// The @react-native/babel-plugin-codegen bundled inside babel-preset-expo
+// cannot parse newer NativeComponent spec formats. We stub the specific
+// spec files that trigger the error so the bundler can complete.
 //
-// In Expo Go (managed / old-arch workflow) these Fabric and private specs
-// are not executed at runtime anyway — the old-arch paths are used instead.
-// Stubbing them with empty modules is safe.
+// Patterns match the resolved absolute file path (after normalising \ → /):
+//   1. react-native/src/private/   — private/deprecated RN components
+//   2. src/fabric/*NativeComponent* — Fabric-arch spec files only (NOT all of src/fabric)
+//   3. specs_DEPRECATED/*           — old deprecated spec dir in react-native
 //
-// Pattern: any resolved file that lives inside:
-//   • .../react-native/src/private/
-//   • any package's src/fabric/ directory
-//   • any package's specs_DEPRECATED/ directory
+// IMPORTANT: /src/fabric/ alone is too broad and stubs helper files that
+// ARE needed at runtime (causes "undefined is not a function" on the phone).
 const STUB_PATTERNS = [
   /\/react-native\/src\/private\//,
-  /\/src\/fabric\//,
+  /\/src\/fabric\/[^/]*NativeComponent[^/]*\.(js|ts)x?$/,
   /\/specs_DEPRECATED\//,
 ];
 
 config.resolver = {
   ...config.resolver,
   resolveRequest: (context, moduleName, platform) => {
-    // Always resolve first to get the absolute file path
     const resolution = context.resolveRequest(context, moduleName, platform);
 
     if (resolution?.filePath) {
       const fp = resolution.filePath.replace(/\\/g, '/');
-      if (STUB_PATTERNS.some(pattern => pattern.test(fp))) {
+      if (STUB_PATTERNS.some(p => p.test(fp))) {
         return { type: 'empty' };
       }
     }
