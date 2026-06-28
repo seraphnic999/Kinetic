@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Alert, StatusBar, SafeAreaView,
+  Alert, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +30,7 @@ const getBodyAreas = (exercises) => {
 
 export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
+  const { height: windowHeight } = useWindowDimensions();
 
   useFocusEffect(
     useCallback(() => {
@@ -116,7 +117,7 @@ export default function SessionListScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { height: windowHeight }]}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Header */}
@@ -158,7 +159,7 @@ export default function SessionListScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
