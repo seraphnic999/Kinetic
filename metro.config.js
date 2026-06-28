@@ -15,7 +15,7 @@ const config = getDefaultConfig(__dirname);
 // ARE needed at runtime (causes "undefined is not a function" on the phone).
 const STUB_PATTERNS = [
   /\/react-native\/src\/private\//,
-  /\/src\/fabric\/[^/]*NativeComponent[^/]*\.(js|ts)x?$/,
+  /\/src\/fabric\/.*NativeComponent[^/]*\.(js|ts)x?$/,
   /\/specs_DEPRECATED\//,
 ];
 
