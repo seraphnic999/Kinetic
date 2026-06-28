@@ -1,21 +1,24 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// react-native@0.85.x ships two VirtualView components in src/private/
-// whose Flow types for onModeChange are incompatible with the version of
-// @react-native/babel-plugin-codegen bundled inside babel-preset-expo.
-// Neither is used by our app — stub both with empty modules.
-const STUB_PATTERNS = [
-  'VirtualViewNativeComponent',
-  'VirtualViewExperimentalNativeComponent',
-];
+// react-native@0.85.x ships internal private/deprecated components whose
+// Flow codegen types are incompatible with the @react-native/babel-plugin-codegen
+// version bundled inside babel-preset-expo. None of these are used by Kinetic.
+// Stub the entire src/private tree to prevent the bundler hitting them one by one.
+const RN_PRIVATE = path.join('react-native', 'src', 'private');
 
 const originalResolveRequest = config.resolver?.resolveRequest;
 config.resolver = {
   ...config.resolver,
   resolveRequest: (context, moduleName, platform) => {
-    if (STUB_PATTERNS.some(p => moduleName.includes(p))) {
+    // Normalise both forward and back slashes for Windows compatibility
+    const normalised = moduleName.replace(/\\/g, '/');
+    if (
+      normalised.includes('react-native/src/private') ||
+      normalised.includes('react-native\\src\\private')
+    ) {
       return { type: 'empty' };
     }
     if (originalResolveRequest) {
