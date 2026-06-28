@@ -4,21 +4,27 @@
  * Custom Metro transformer for Kinetic.
  *
  * Problem: babel-preset-expo bundles an older @react-native/babel-plugin-codegen
- * that cannot parse newer NativeComponent spec formats used by:
- *   - react-native@0.85.x  (src/private/ and specs_DEPRECATED/)
+ * that crashes on newer NativeComponent spec formats in:
+ *   - react-native@0.85.x  (src/private/specs_DEPRECATED/)
  *   - react-native-screens@4.25.x  (src/fabric/)
  *
- * The plugin is triggered when it finds a `codegenNativeComponent` import.
- * It then tries to parse the file's Flow/TS types to generate a view config,
- * and crashes on types it doesn't understand.
+ * Two different file types require different treatment:
  *
- * Solution: Before babel runs, detect any file that imports
- * `codegenNativeComponent` and replace that import with a runtime call to
- * `requireNativeComponent` — the old-arch equivalent that works in Expo Go.
- * The babel-plugin-codegen never fires because its trigger import is gone.
+ * 1. FLOW (.js) files — react-native private/specs_DEPRECATED
+ *    The babel-plugin-codegen crashes on them, AND Hermes (Android JS engine)
+ *    fails to parse their complex Flow type annotations even after we remove
+ *    the codegen import. Fix: replace the ENTIRE file with minimal plain JS
+ *    that calls requireNativeComponent with the same native component name.
+ *    This produces valid Hermes-parseable code with no Flow types.
  *
- * This is safe because Expo Go runs the old architecture, where
- * requireNativeComponent is the correct registration path.
+ * 2. TYPESCRIPT (.ts/.tsx) files — react-native-screens/src/fabric/
+ *    Hermes is NOT used to parse TypeScript files (babel's TS parser handles
+ *    them). Fix: remove just the codegenNativeComponent import and inject a
+ *    requireNativeComponent-based replacement. The rest of the file (including
+ *    TS types that babel will strip) processes normally.
+ *
+ * Both fixes use requireNativeComponent because Expo Go runs old-arch,
+ * where requireNativeComponent is the correct native component registration path.
  */
 
 const path = require('path');
@@ -30,41 +36,72 @@ const DEFAULT_TRANSFORMER = path.join(
 
 const defaultTransformer = require(DEFAULT_TRANSFORMER);
 
-// Matches either:
-//   import codegenNativeComponent from '...';
-//   import { codegenNativeComponent } from '...';
-// on its own line (multiline flag off — we replace line by line via global match).
+// ─── TypeScript approach: replace import, keep rest of file ──────────────────
+
 const CODEGEN_IMPORT_RE =
   /^[ \t]*import\s+(?:\{[^}]*\bcodegenNativeComponent\b[^}]*\}|codegenNativeComponent)\s+from\s+['"][^'"]+['"];?[ \t]*\r?\n?/gm;
 
-const REPLACEMENT_LINES = [
-  "/* kinetic-codegen-stub: codegenNativeComponent replaced with requireNativeComponent */",
-  "const { requireNativeComponent: __rnc } = require('react-native');",
-  "const codegenNativeComponent = function(name) {",
-  "  try { return __rnc(name); } catch(e) { return {}; }",
-  "};",
-  "",
-].join('\n');
+const TS_REPLACEMENT =
+  "/* kinetic: codegenNativeComponent → requireNativeComponent */\n" +
+  "var __rnc = require('react-native').requireNativeComponent;\n" +
+  "var codegenNativeComponent = function(name) {\n" +
+  "  try { return __rnc(name); } catch(e) { return {}; }\n" +
+  "};\n";
+
+function patchTypeScriptFile(src) {
+  const patched = src.replace(CODEGEN_IMPORT_RE, '');
+  if (patched === src) return null; // nothing replaced
+
+  // Insert after leading directive if present
+  const dir = /^(?:'use strict'|"use strict"|'use client'|"use client");?[ \t]*\r?\n/.exec(patched);
+  if (dir) {
+    return patched.slice(0, dir[0].length) + TS_REPLACEMENT + patched.slice(dir[0].length);
+  }
+  return TS_REPLACEMENT + patched;
+}
+
+// ─── Flow approach: replace entire file with minimal plain JS ─────────────────
+
+// Extract the native component name from codegenNativeComponent call:
+//   codegenNativeComponent<Type>('NativeName', ...)  or
+//   (codegenNativeComponent<Type>(\n  'NativeName', ...
+const NATIVE_NAME_RE = /codegenNativeComponent(?:<[^>]+>)?\s*\(\s*\n?\s*['"]([^'"]+)['"]/;
+
+function buildFlowReplacement(src) {
+  const m = src.match(NATIVE_NAME_RE);
+  const name = m ? m[1] : null;
+
+  if (name) {
+    return (
+      "'use strict';\n" +
+      "var __rnc = require('react-native').requireNativeComponent;\n" +
+      "var __NC;\n" +
+      "try { __NC = __rnc(" + JSON.stringify(name) + "); } catch(e) { __NC = {}; }\n" +
+      "module.exports = __NC;\n" +
+      "module.exports['default'] = __NC;\n"
+    );
+  }
+  // Fallback: no name found, return empty-ish module
+  return "'use strict';\nmodule.exports = {};\nmodule.exports['default'] = {};\n";
+}
+
+// ─── Main transform hook ──────────────────────────────────────────────────────
 
 module.exports.transform = function transform(params) {
   const { src, filename } = params;
 
   if (src && src.includes('codegenNativeComponent')) {
-    const patched = src.replace(CODEGEN_IMPORT_RE, '');
+    const isTS = filename.endsWith('.ts') || filename.endsWith('.tsx');
+    const isJS = !isTS; // includes .js, .jsx, .mjs etc.
 
-    if (patched !== src) {
-      // Inject replacement after any leading directives ('use strict', 'use client')
-      const directiveLine = /^(?:'use strict'|"use strict"|'use client'|"use client");?\r?\n/.exec(patched);
-      let newSrc;
-      if (directiveLine) {
-        newSrc =
-          patched.slice(0, directiveLine[0].length) +
-          REPLACEMENT_LINES +
-          patched.slice(directiveLine[0].length);
-      } else {
-        newSrc = REPLACEMENT_LINES + patched;
+    if (isTS) {
+      const newSrc = patchTypeScriptFile(src);
+      if (newSrc) {
+        return defaultTransformer.transform({ ...params, src: newSrc });
       }
-
+    } else if (isJS) {
+      // Replace entire file — avoids Hermes failing on complex Flow types
+      const newSrc = buildFlowReplacement(src);
       return defaultTransformer.transform({ ...params, src: newSrc });
     }
   }
