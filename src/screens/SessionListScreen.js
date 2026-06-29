@@ -31,6 +31,7 @@ const getBodyAreas = (exercises) => {
 export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
+  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
 
   useFocusEffect(
     useCallback(() => {
@@ -38,23 +39,12 @@ export default function SessionListScreen({ navigation }) {
     }, [])
   );
 
-  const handleDelete = (sessionId, sessionName) => {
-    Alert.alert(
-      'Delete Session',
-      `Delete "${sessionName}"? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const updated = sessions.filter(s => s.id !== sessionId);
-            setSessions(updated);
-            await saveSessions(updated);
-          },
-        },
-      ]
-    );
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const updated = sessions.filter(s => s.id !== deleteTarget.id);
+    setSessions(updated);
+    await saveSessions(updated);
+    setDeleteTarget(null);
   };
 
   const renderSession = ({ item }) => {
@@ -97,7 +87,7 @@ export default function SessionListScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.deleteBtn}
-            onPress={() => handleDelete(item.id, item.name)}
+            onPress={() => setDeleteTarget({ id: item.id, name: item.name })}
             activeOpacity={0.7}
           >
             <Ionicons name="trash-outline" size={18} color={Colors.danger} />
@@ -159,6 +149,26 @@ export default function SessionListScreen({ navigation }) {
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}
         />
+      )}
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>Delete Session?</Text>
+            <Text style={styles.confirmMsg}>
+              "{deleteTarget.name}" will be permanently deleted.
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setDeleteTarget(null)} activeOpacity={0.8}>
+                <Text style={styles.confirmCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmDeleteBtn} onPress={confirmDelete} activeOpacity={0.8}>
+                <Text style={styles.confirmDeleteTxt}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -314,4 +324,27 @@ const styles = StyleSheet.create({
     ...Shadows.orange,
   },
   emptyBtnText: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+
+  confirmOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#000000CC', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+  },
+  confirmBox: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    padding: Spacing.xl, margin: Spacing.xl, gap: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
+  confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+  confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
+  confirmCancelBtn: {
+    flex: 1, height: 44, borderRadius: Radius.md,
+    backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center',
+  },
+  confirmCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
+  confirmDeleteBtn: {
+    flex: 1, height: 44, borderRadius: Radius.md,
+    backgroundColor: Colors.danger, alignItems: 'center', justifyContent: 'center',
+  },
+  confirmDeleteTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
 });

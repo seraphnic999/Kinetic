@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Alert, ScrollView, StatusBar, Modal,
+  ScrollView, StatusBar, Modal,
   FlatList, Platform, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,6 +12,25 @@ import { formatTime } from '../utils/time';
 
 // ---------- Sub-component: Numeric Stepper ----------
 function Stepper({ value, onChange, min = 0, max = 999, label }) {
+  const [text, setText] = useState(String(value));
+
+  // Sync display when value changes externally (e.g. +/- buttons)
+  useEffect(() => { setText(String(value)); }, [value]);
+
+  const handleChangeText = (t) => {
+    setText(t);
+    const n = parseInt(t, 10);
+    // Don't clamp during typing — allow intermediate states (e.g. typing "30" via "3")
+    if (!isNaN(n) && n >= 0) onChange(Math.min(max, n));
+  };
+
+  const handleBlur = () => {
+    const n = parseInt(text, 10);
+    const clamped = isNaN(n) ? min : Math.max(min, Math.min(max, n));
+    onChange(clamped);
+    setText(String(clamped));
+  };
+
   return (
     <View style={stepperStyles.container}>
       {label && <Text style={stepperStyles.label}>{label}</Text>}
@@ -25,11 +44,9 @@ function Stepper({ value, onChange, min = 0, max = 999, label }) {
         </TouchableOpacity>
         <TextInput
           style={stepperStyles.input}
-          value={String(value)}
-          onChangeText={t => {
-            const n = parseInt(t, 10);
-            if (!isNaN(n)) onChange(Math.max(min, Math.min(max, n)));
-          }}
+          value={text}
+          onChangeText={handleChangeText}
+          onBlur={handleBlur}
           keyboardType="number-pad"
           selectTextOnFocus
         />
@@ -164,16 +181,28 @@ function RegularExerciseForm({ exercise, onChange }) {
           )}
         </View>
       ) : exercise.bodySection === 'Other' ? (
-        <View style={formStyles.field}>
-          <Text style={formStyles.fieldLabel}>Exercise Name</Text>
-          <TextInput
-            style={formStyles.textInput}
-            value={exercise.customName || ''}
-            onChangeText={t => onChange({ ...exercise, customName: t })}
-            placeholder="Enter exercise name..."
-            placeholderTextColor={Colors.textMuted}
-          />
-        </View>
+        <>
+          <View style={formStyles.field}>
+            <Text style={formStyles.fieldLabel}>Body Section Name</Text>
+            <TextInput
+              style={formStyles.textInput}
+              value={exercise.customBodySection || ''}
+              onChangeText={t => onChange({ ...exercise, customBodySection: t })}
+              placeholder="e.g. Forearms, Neck, Calves..."
+              placeholderTextColor={Colors.textMuted}
+            />
+          </View>
+          <View style={formStyles.field}>
+            <Text style={formStyles.fieldLabel}>Exercise Name</Text>
+            <TextInput
+              style={formStyles.textInput}
+              value={exercise.customName || ''}
+              onChangeText={t => onChange({ ...exercise, customName: t })}
+              placeholder="Enter exercise name..."
+              placeholderTextColor={Colors.textMuted}
+            />
+          </View>
+        </>
       ) : null}
 
       {/* Numeric parameters */}
@@ -293,54 +322,65 @@ const newIntervals = () => ({
 });
 
 // ---------- Main Screen ----------
+const defaultSessionName = () => {
+  const d = new Date();
+  return `Session ${d.toLocaleDateString('en', { month: 'short', day: 'numeric' })}`;
+};
+
 export default function SessionEditorScreen({ navigation, route }) {
   const existingSession = route.params?.session ?? null;
   const { height: windowHeight } = useWindowDimensions();
   const [navH, setNavH] = useState(0);
 
-  const [sessionName, setSessionName] = useState(existingSession?.name ?? '');
+  // Session ID is fixed for the lifetime of this editor
+  const [sessionId] = useState(existingSession?.id ?? generateId());
+  const createdAt   = useRef(existingSession?.createdAt ?? Date.now());
+
+  const [sessionName, setSessionName] = useState(existingSession?.name ?? defaultSessionName());
   const [restTimerSecs, setRestTimerSecs] = useState(existingSession?.restTimerSecs ?? 60);
   const [exercises, setExercises] = useState(existingSession?.exercises ?? []);
   const [expandedId, setExpandedId] = useState(null);
-
-  // Add exercise type picker state
   const [showAddMenu, setShowAddMenu] = useState(false);
 
-  const effectiveExercises = React.useMemo(() => {
-    // Warmup always first, intervals always last
+  // ── Effective order: warmup first, intervals last ─────────────────────────
+  const effectiveExercises = useMemo(() => {
     const warmup   = exercises.filter(e => e.type === EXERCISE_TYPES.WARMUP);
     const middle   = exercises.filter(e => e.type !== EXERCISE_TYPES.WARMUP && e.type !== EXERCISE_TYPES.INTERVALS);
     const interval = exercises.filter(e => e.type === EXERCISE_TYPES.INTERVALS);
     return [...warmup, ...middle, ...interval];
   }, [exercises]);
 
-  const handleSave = async () => {
-    if (!sessionName.trim()) {
-      Alert.alert('Session Name Required', 'Please enter a name for this session.');
-      return;
-    }
+  // ── Auto-save ─────────────────────────────────────────────────────────────
+  const isFirstRender = useRef(true);
+  const saveTimer     = useRef(null);
 
+  const doSave = useCallback(async (name, exs, rest) => {
+    const effective = (() => {
+      const w = exs.filter(e => e.type === EXERCISE_TYPES.WARMUP);
+      const m = exs.filter(e => e.type !== EXERCISE_TYPES.WARMUP && e.type !== EXERCISE_TYPES.INTERVALS);
+      const i = exs.filter(e => e.type === EXERCISE_TYPES.INTERVALS);
+      return [...w, ...m, ...i];
+    })();
+    const session = {
+      id: sessionId,
+      name: name.trim() || 'New Session',
+      exercises: effective,
+      restTimerSecs: rest,
+      createdAt: createdAt.current,
+    };
     const sessions = await loadSessions();
-    let updated;
-    if (existingSession) {
-      updated = sessions.map(s =>
-        s.id === existingSession.id
-          ? { ...s, name: sessionName.trim(), exercises: effectiveExercises, restTimerSecs }
-          : s
-      );
-    } else {
-      const newSession = {
-        id: generateId(),
-        name: sessionName.trim(),
-        exercises: effectiveExercises,
-        restTimerSecs,
-        createdAt: Date.now(),
-      };
-      updated = [...sessions, newSession];
-    }
+    const updated  = sessions.some(s => s.id === sessionId)
+      ? sessions.map(s => s.id === sessionId ? session : s)
+      : [...sessions, session];
     await saveSessions(updated);
-    navigation.goBack();
-  };
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => doSave(sessionName, exercises, restTimerSecs), 600);
+    return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
+  }, [sessionName, exercises, restTimerSecs, doSave]);
 
   const addExercise = (type) => {
     setShowAddMenu(false);
@@ -400,12 +440,16 @@ export default function SessionEditorScreen({ navigation, route }) {
     if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s`;
     if (ex.type === EXERCISE_TYPES.COMBO) {
       const parts = [...new Set(
-        (ex.subExercises ?? []).map(s => s.bodySection).filter(Boolean)
+        (ex.subExercises ?? []).map(s => s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection).filter(Boolean)
       )].join(' / ');
       return parts ? `🔗 ${parts} — ${ex.sets} sets` : `🔗 Combo — ${ex.sets} sets`;
     }
-    const section = ex.bodySection || '';
-    const name    = ex.name === 'Other' ? (ex.customName || 'Unnamed') : (ex.name || 'Unnamed');
+    const section = ex.bodySection === 'Other'
+      ? (ex.customBodySection || 'Other')
+      : (ex.bodySection || '');
+    const name = (ex.name === 'Other' || ex.bodySection === 'Other')
+      ? (ex.customName || 'Unnamed')
+      : (ex.name || 'Unnamed');
     const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
     return section ? `${section} — ${name} — ${details}` : `${name} — ${details}`;
   };
@@ -425,9 +469,7 @@ export default function SessionEditorScreen({ navigation, route }) {
         <Text style={styles.navTitle}>
           {existingSession ? 'Edit Session' : 'New Session'}
         </Text>
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.8}>
-          <Text style={styles.saveBtnText}>Save</Text>
-        </TouchableOpacity>
+        <View style={styles.navRight} />
       </View>
 
       <ScrollView
@@ -457,7 +499,7 @@ export default function SessionEditorScreen({ navigation, route }) {
               label="Seconds"
               value={restTimerSecs}
               onChange={setRestTimerSecs}
-              min={10}
+              min={0}
               max={600}
             />
             <Text style={styles.restTimerHint}>
@@ -687,11 +729,7 @@ const styles = StyleSheet.create({
   },
   backBtn: { padding: Spacing.sm },
   navTitle: { ...Typography.h3, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
-  saveBtn: {
-    backgroundColor: Colors.primary, paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 2, borderRadius: Radius.full,
-  },
-  saveBtnText: { ...Typography.label, color: Colors.background, textTransform: 'none', fontSize: 15 },
+  navRight:    { width: 40 },
   scroll: {
     flex: 1,
     minHeight: 0, // critical for flex-based scroll containment on web
