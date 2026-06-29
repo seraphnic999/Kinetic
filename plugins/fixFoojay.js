@@ -1,46 +1,48 @@
 /**
- * Expo config plugin: fixes the foojay IBM_SEMERU crash.
- * 
- * Root cause: @react-native/gradle-plugin/settings.gradle.kts uses
- * foojay-resolver-convention 0.5.0 which references JvmVendorSpec.IBM_SEMERU.
- * This field was REMOVED in Gradle 9.0. The generated project uses Gradle 9.3.1.
- * 
- * Fix: downgrade Gradle to 8.10.2 where IBM_SEMERU still exists.
- * EAS cloud builds use Linux where this doesn't manifest; local Windows needs this.
+ * Expo config plugin — fixes two local Android build/runtime issues:
+ * 1. Gradle 9.x foojay crash → downgrade wrapper to 8.13
+ * 2. New Architecture (BridgelessReact) → disable via gradle.properties
+ *    New Arch causes "EventEmitter of undefined" crash because our
+ *    requireNativeComponent stubs are incompatible with the Fabric renderer.
  */
-const { withDangerousMod } = require('@expo/config-plugins');
+const { withDangerousMod, withGradleProperties } = require('@expo/config-plugins');
 const fs   = require('fs');
 const path = require('path');
 
-module.exports = function fixFoojay(config) {
+function fixGradleVersion(config) {
   return withDangerousMod(config, [
     'android',
     (config) => {
-      const root = config.modRequest.platformProjectRoot;
-      const wrapperProps = path.join(root, 'gradle', 'wrapper', 'gradle-wrapper.properties');
-
+      const wrapperProps = path.join(
+        config.modRequest.platformProjectRoot,
+        'gradle', 'wrapper', 'gradle-wrapper.properties'
+      );
       if (fs.existsSync(wrapperProps)) {
         let src = fs.readFileSync(wrapperProps, 'utf8');
-        const before = src;
-
-        // AGP requires Gradle ≥ 8.13. Gradle 9.x removed IBM_SEMERU from JvmVendorSpec.
-        // Gradle 8.13 is the sweet spot: meets AGP minimum and foojay 0.5.0 still works.
-        src = src.replace(
+        const patched = src.replace(
           /distributionUrl=.*gradle-[\d.]+-bin\.zip/,
           'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip'
         );
-
-        if (src !== before) {
-          fs.writeFileSync(wrapperProps, src, 'utf8');
-          console.log('[fixFoojay] Downgraded Gradle to 8.10.2 in gradle-wrapper.properties');
-        } else {
-          console.log('[fixFoojay] gradle-wrapper.properties already patched or not found');
+        if (patched !== src) {
+          fs.writeFileSync(wrapperProps, patched, 'utf8');
+          console.log('[fixFoojay] Gradle wrapper → 8.13');
         }
-      } else {
-        console.log('[fixFoojay] gradle-wrapper.properties not found at: ' + wrapperProps);
       }
-
       return config;
     },
   ]);
+}
+
+function fixNewArch(config) {
+  return withGradleProperties(config, (config) => {
+    config.modResults = config.modResults.filter(item => item.key !== 'newArchEnabled');
+    config.modResults.push({ type: 'property', key: 'newArchEnabled', value: 'false' });
+    return config;
+  });
+}
+
+module.exports = function fixFoojay(config) {
+  config = fixGradleVersion(config);
+  config = fixNewArch(config);
+  return config;
 };
