@@ -1,9 +1,12 @@
 /**
- * Expo config plugin: fixes the foojay IBM_SEMERU crash with Gradle 9.3.1
+ * Expo config plugin: fixes the foojay IBM_SEMERU crash.
  * 
- * Root cause: Expo SDK 56 generates settings.gradle.kts (Kotlin DSL) but
- * withSettingsGradle only modifies settings.gradle (Groovy DSL) — so the
- * patch was silently not applying. Using withDangerousMod to write directly.
+ * Root cause: @react-native/gradle-plugin/settings.gradle.kts uses
+ * foojay-resolver-convention 0.5.0 which references JvmVendorSpec.IBM_SEMERU.
+ * This field was REMOVED in Gradle 9.0. The generated project uses Gradle 9.3.1.
+ * 
+ * Fix: downgrade Gradle to 8.10.2 where IBM_SEMERU still exists.
+ * EAS cloud builds use Linux where this doesn't manifest; local Windows needs this.
  */
 const { withDangerousMod } = require('@expo/config-plugins');
 const fs   = require('fs');
@@ -13,36 +16,27 @@ module.exports = function fixFoojay(config) {
   return withDangerousMod(config, [
     'android',
     (config) => {
-      const root = config.modRequest.platformProjectRoot; // = F:\Kinetic\android
+      const root = config.modRequest.platformProjectRoot;
+      const wrapperProps = path.join(root, 'gradle', 'wrapper', 'gradle-wrapper.properties');
 
-      // Expo SDK 51+ uses Kotlin DSL (.kts). Fall back to Groovy for older.
-      const candidates = [
-        path.join(root, 'settings.gradle.kts'),
-        path.join(root, 'settings.gradle'),
-      ];
-
-      for (const filePath of candidates) {
-        if (!fs.existsSync(filePath)) continue;
-
-        let src = fs.readFileSync(filePath, 'utf8');
+      if (fs.existsSync(wrapperProps)) {
+        let src = fs.readFileSync(wrapperProps, 'utf8');
         const before = src;
 
-        // Replace ANY foojay version with 0.9.0
-        // Handles both Groovy:  version "0.8.0"
-        // and Kotlin DSL:       version("0.8.0")  or  .version("0.8.0")
+        // Downgrade Gradle 9.x to 8.10.2 — foojay 0.5.0 works fine on 8.x
         src = src.replace(
-          /(foojay-resolver-convention[^)\n]*?)[.( ]*version[( "']+([\d.]+)[) "']+/g,
-          (_, prefix) => `${prefix} version("0.9.0")`
+          /distributionUrl=.*gradle-[\d.]+-bin\.zip/,
+          'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip'
         );
 
         if (src !== before) {
-          fs.writeFileSync(filePath, src, 'utf8');
-          console.log(`[fixFoojay] Patched ${path.basename(filePath)}: foojay → 0.9.0`);
+          fs.writeFileSync(wrapperProps, src, 'utf8');
+          console.log('[fixFoojay] Downgraded Gradle to 8.10.2 in gradle-wrapper.properties');
         } else {
-          console.log(`[fixFoojay] No foojay line found in ${path.basename(filePath)} — contents:`);
-          console.log(src.slice(0, 400));
+          console.log('[fixFoojay] gradle-wrapper.properties already patched or not found');
         }
-        break; // only patch first found
+      } else {
+        console.log('[fixFoojay] gradle-wrapper.properties not found at: ' + wrapperProps);
       }
 
       return config;
