@@ -1,41 +1,51 @@
 /**
  * Expo config plugin: fixes the foojay IBM_SEMERU crash with Gradle 9.3.1
- *
- * Two-pronged fix:
- * 1. gradle.properties: disable JVM toolchain auto-provisioning so the
- *    foojay plugin never tries to load DistributionsKt (which crashes).
- * 2. settings.gradle / settings.gradle.kts: upgrade foojay to 0.9.0
- *    which fixes the IBM_SEMERU field reference.
+ * 
+ * Root cause: Expo SDK 56 generates settings.gradle.kts (Kotlin DSL) but
+ * withSettingsGradle only modifies settings.gradle (Groovy DSL) — so the
+ * patch was silently not applying. Using withDangerousMod to write directly.
  */
-const { withGradleProperties, withSettingsGradle } = require('@expo/config-plugins');
-
-function fixGradleProperties(config) {
-  return withGradleProperties(config, (config) => {
-    const props = config.modResults.filter(
-      item => !['org.gradle.java.installations.auto-provision',
-                 'org.gradle.java.installations.auto-download'].includes(item.key)
-    );
-    props.push(
-      { type: 'property', key: 'org.gradle.java.installations.auto-provision', value: 'false' },
-      { type: 'property', key: 'org.gradle.java.installations.auto-download', value: 'false' }
-    );
-    config.modResults = props;
-    return config;
-  });
-}
-
-function fixSettingsGradle(config) {
-  return withSettingsGradle(config, (config) => {
-    config.modResults.contents = config.modResults.contents.replace(
-      /id\s*[("]+org\.gradle\.toolchains\.foojay-resolver-convention[)"]+\s*version\s*[("]+[^)"]+[)"]+/g,
-      'id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"'
-    );
-    return config;
-  });
-}
+const { withDangerousMod } = require('@expo/config-plugins');
+const fs   = require('fs');
+const path = require('path');
 
 module.exports = function fixFoojay(config) {
-  config = fixGradleProperties(config);
-  config = fixSettingsGradle(config);
-  return config;
+  return withDangerousMod(config, [
+    'android',
+    (config) => {
+      const root = config.modRequest.platformProjectRoot; // = F:\Kinetic\android
+
+      // Expo SDK 51+ uses Kotlin DSL (.kts). Fall back to Groovy for older.
+      const candidates = [
+        path.join(root, 'settings.gradle.kts'),
+        path.join(root, 'settings.gradle'),
+      ];
+
+      for (const filePath of candidates) {
+        if (!fs.existsSync(filePath)) continue;
+
+        let src = fs.readFileSync(filePath, 'utf8');
+        const before = src;
+
+        // Replace ANY foojay version with 0.9.0
+        // Handles both Groovy:  version "0.8.0"
+        // and Kotlin DSL:       version("0.8.0")  or  .version("0.8.0")
+        src = src.replace(
+          /(foojay-resolver-convention[^)\n]*?)[.( ]*version[( "']+([\d.]+)[) "']+/g,
+          (_, prefix) => `${prefix} version("0.9.0")`
+        );
+
+        if (src !== before) {
+          fs.writeFileSync(filePath, src, 'utf8');
+          console.log(`[fixFoojay] Patched ${path.basename(filePath)}: foojay → 0.9.0`);
+        } else {
+          console.log(`[fixFoojay] No foojay line found in ${path.basename(filePath)} — contents:`);
+          console.log(src.slice(0, 400));
+        }
+        break; // only patch first found
+      }
+
+      return config;
+    },
+  ]);
 };
