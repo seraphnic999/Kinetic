@@ -244,8 +244,9 @@ function WarmupForm({ exercise, onChange }) {
           <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
-      <View style={formStyles.stepperRow}>
-        <Stepper label="Duration (min)" value={exercise.duration ?? 10} onChange={v => onChange({ ...exercise, duration: v })} min={1} max={120} />
+      <View style={formStyles.timerRow}>
+        <Stepper label="Seconds" value={exercise.duration ?? 180} onChange={v => onChange({ ...exercise, duration: v })} min={10} max={3600} />
+        <Text style={formStyles.timerHint}>{formatTime(exercise.duration ?? 180)}</Text>
       </View>
       <PickerModal
         visible={showType}
@@ -303,6 +304,16 @@ const formStyles = StyleSheet.create({
     gap: Spacing.md,
     justifyContent: 'space-around',
   },
+  timerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.lg,
+  },
+  timerHint: {
+    ...Typography.timerMedium,
+    color: Colors.amber,
+    flex: 1,
+    fontFamily: DIGITAL_FONT,
+    letterSpacing: 2,
+  },
 });
 
 // ---------- Helper: new exercise templates ----------
@@ -318,7 +329,7 @@ const newCombo = () => ({
 });
 const newWarmup = () => ({
   id: generateId(), type: EXERCISE_TYPES.WARMUP,
-  warmupType: 'Treadmill', duration: 3,
+  warmupType: 'Treadmill', duration: 180,
 });
 const newIntervals = () => ({
   id: generateId(), type: EXERCISE_TYPES.INTERVALS,
@@ -440,7 +451,7 @@ export default function SessionEditorScreen({ navigation, route }) {
   };
 
   const getExerciseLabel = (ex) => {
-    if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${ex.duration} min`;
+    if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${formatTime(ex.duration ?? 180)}`;
     if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
     if (ex.type === EXERCISE_TYPES.COMBO) {
       const parts = [...new Set(

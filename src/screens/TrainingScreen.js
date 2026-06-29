@@ -68,7 +68,7 @@ const initExerciseStates = (exercises) => {
         subReps:    (ex.subExercises ?? []).map(s => s.reps ?? 1),
       };
     } else if (ex.type === EXERCISE_TYPES.WARMUP) {
-      s[ex.id] = { timeLeft: (ex.duration ?? 3) * 60, isRunning: false, status: 'pending' };
+      s[ex.id] = { timeLeft: ex.duration ?? 180, isRunning: false, status: 'pending' };
     } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
       s[ex.id] = {
         repsLeft: ex.reps ?? 8, reps: ex.reps ?? 8,
@@ -496,7 +496,7 @@ export default function TrainingScreen({ navigation, route }) {
               weight: st.subWeights[i], reps: st.subReps[i],
             })) };
         if (ex?.type === EXERCISE_TYPES.WARMUP)
-          return { ...base, warmupType: ex.warmupType, plannedDurationSecs: ex.duration * 60 };
+          return { ...base, warmupType: ex.warmupType, plannedDurationSecs: ex.duration ?? 180 };
         if (ex?.type === EXERCISE_TYPES.INTERVALS)
           return { ...base, plannedReps: ex.reps, completedReps: ex.reps - (st?.repsLeft ?? 0), intervalLengthSecs: ex.intervalLength };
         return base;
@@ -528,7 +528,7 @@ export default function TrainingScreen({ navigation, route }) {
         if (ex.type === EXERCISE_TYPES.REGULAR || ex.type === EXERCISE_TYPES.COMBO)
           status = st.setsCompleted > 0 ? 'partial' : 'pending';
         if (ex.type === EXERCISE_TYPES.WARMUP)
-          status = st.timeLeft < (ex.duration ?? 3) * 60 ? 'partial' : 'pending';
+          status = st.timeLeft < (ex.duration ?? 180) ? 'partial' : 'pending';
         if (ex.type === EXERCISE_TYPES.INTERVALS)
           status = st.repsLeft < st.reps ? 'partial' : 'pending';
         return { ...prev, [id]: { ...st, isRunning: false, status } };
@@ -651,8 +651,9 @@ export default function TrainingScreen({ navigation, route }) {
                   if (starting) addToPerfOrder(selectedId);
                   return { ...prev, [selectedId]: {
                     ...st, isRunning: !st.isRunning,
-                    phase:    starting ? PHASE.WALKING       : st.phase,
-                    timeLeft: starting ? st.walkDuration     : st.timeLeft,
+                    status:   starting ? 'partial'        : st.status,
+                    phase:    starting ? PHASE.WALKING    : st.phase,
+                    timeLeft: starting ? st.walkDuration  : st.timeLeft,
                   }};
                 })}
                 onUpdateReps={v => setExStates(prev => ({
