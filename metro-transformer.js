@@ -87,20 +87,22 @@ function buildFlowReplacement(src) {
 
 // ─── Main transform hook ──────────────────────────────────────────────────────
 
+// Only transform files that actually IMPORT codegenNativeComponent.
+//
+// CRITICAL: src.includes('codegenNativeComponent') was too broad.
+// react-native/index.js exports it as a public API getter:
+//   get codegenNativeComponent() { return require(...).default; }
+// That caused the ENTIRE react-native module to be replaced with {}, wiping
+// out TurboModuleRegistry, NativeModules, and everything else.
+//
+// Using an import-statement regex is precise: only spec files that actually
+// import and call codegenNativeComponent get replaced.
+const IMPORTS_CODEGEN_RE = /^import\s+(?:(?:\{[^}]*\b)?codegenNativeComponent\b[^}]*\}?|codegenNativeComponent)\s+from\s+/m;
+
 module.exports.transform = function transform(params) {
   const { src, filename, options } = params;
 
-  // Replace codegenNativeComponent files in ALL build modes (dev AND prod).
-  //
-  // babel-plugin-codegen (bundled with babel-preset-expo) cannot parse the
-  // Flow event types in RN 0.85's specs_DEPRECATED files. This crashes Metro
-  // regardless of whether the build is dev or production.
-  //
-  // In production EAS builds, Gradle runs real codegen at the native layer
-  // (:app:generateCodegenArtifactsFromSchema) — but Metro's JS bundling still
-  // goes through babel and still hits this crash. Our replacement makes Metro
-  // produce valid JS while the native side uses the proper generated artifacts.
-  if (src && src.includes('codegenNativeComponent')) {
+  if (src && IMPORTS_CODEGEN_RE.test(src)) {
     const nameMatch = src.match(NATIVE_NAME_RE);
     const name = nameMatch ? nameMatch[1] : null;
 
