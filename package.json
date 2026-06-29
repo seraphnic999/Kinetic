@@ -15,7 +15,6 @@
     "@react-navigation/stack": "^7.10.6",
     "expo": "~56.0.12",
     "expo-audio": "^56.0.12",
-    "expo-av": "^16.0.8",
     "expo-keep-awake": "^56.0.3",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
