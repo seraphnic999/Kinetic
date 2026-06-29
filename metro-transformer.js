@@ -90,16 +90,17 @@ function buildFlowReplacement(src) {
 module.exports.transform = function transform(params) {
   const { src, filename, options } = params;
 
-  // !! CRITICAL: Only apply the codegenNativeComponent workaround in DEVELOPMENT.
+  // Replace codegenNativeComponent files in ALL build modes (dev AND prod).
   //
-  // In development (Expo Go), proper codegen never runs so we must stub it out
-  // with requireNativeComponent to prevent bundle failures.
+  // babel-plugin-codegen (bundled with babel-preset-expo) cannot parse the
+  // Flow event types in RN 0.85's specs_DEPRECATED files. This crashes Metro
+  // regardless of whether the build is dev or production.
   //
-  // In production (EAS build), Gradle runs the real codegen
-  // (:app:generateCodegenArtifactsFromSchema) BEFORE Metro bundles. The
-  // generated artifacts are correct and complete — replacing them with our
-  // stubs breaks the native interface and causes an immediate crash.
-  if (options.dev && src && src.includes('codegenNativeComponent')) {
+  // In production EAS builds, Gradle runs real codegen at the native layer
+  // (:app:generateCodegenArtifactsFromSchema) — but Metro's JS bundling still
+  // goes through babel and still hits this crash. Our replacement makes Metro
+  // produce valid JS while the native side uses the proper generated artifacts.
+  if (src && src.includes('codegenNativeComponent')) {
     const nameMatch = src.match(NATIVE_NAME_RE);
     const name = nameMatch ? nameMatch[1] : null;
 
