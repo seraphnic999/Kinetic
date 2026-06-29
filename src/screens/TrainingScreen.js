@@ -530,7 +530,7 @@ export default function TrainingScreen({ navigation, route }) {
         if (ex.type === EXERCISE_TYPES.WARMUP)
           status = st.timeLeft < (ex.duration ?? 180) ? 'partial' : 'pending';
         if (ex.type === EXERCISE_TYPES.INTERVALS)
-          status = st.repsLeft < st.reps ? 'partial' : 'pending';
+          status = st.status; // maintained correctly: pending → partial on start → complete when done
         return { ...prev, [id]: { ...st, isRunning: false, status } };
       });
     }
