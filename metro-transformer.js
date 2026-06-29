@@ -91,19 +91,33 @@ module.exports.transform = function transform(params) {
   const { src, filename } = params;
 
   if (src && src.includes('codegenNativeComponent')) {
-    const isTS = filename.endsWith('.ts') || filename.endsWith('.tsx');
-    const isJS = !isTS; // includes .js, .jsx, .mjs etc.
+    // Replace the ENTIRE file for both .js (Flow) and .ts/.tsx (TypeScript).
+    //
+    // For Flow files: Hermes can't parse the remaining complex Flow types after
+    // an import-only replacement, so we need a full replacement.
+    //
+    // For TypeScript files: babel-plugin-codegen triggers on the CALL to
+    // codegenNativeComponent, not just on the import. Removing the import
+    // but keeping the call still fires the plugin. Full replacement fixes this.
+    //
+    // Extract the native component name and produce minimal plain JS that
+    // calls requireNativeComponent instead. No codegen, no Flow/TS types,
+    // Hermes-safe, works at runtime on old-arch (Expo Go).
+    const nameMatch = src.match(NATIVE_NAME_RE);
+    const name = nameMatch ? nameMatch[1] : null;
 
-    if (isTS) {
-      const newSrc = patchTypeScriptFile(src);
-      if (newSrc) {
-        return defaultTransformer.transform({ ...params, src: newSrc });
-      }
-    } else if (isJS) {
-      // Replace entire file — avoids Hermes failing on complex Flow types
-      const newSrc = buildFlowReplacement(src);
-      return defaultTransformer.transform({ ...params, src: newSrc });
-    }
+    const newSrc = name
+      ? (
+          "'use strict';\n" +
+          "var __rnc = require('react-native').requireNativeComponent;\n" +
+          "var __NC;\n" +
+          "try { __NC = __rnc(" + JSON.stringify(name) + "); } catch(e) { __NC = {}; }\n" +
+          "module.exports = __NC;\n" +
+          "module.exports['default'] = __NC;\n"
+        )
+      : "'use strict';\nmodule.exports = {};\nmodule.exports['default'] = {};\n";
+
+    return defaultTransformer.transform({ ...params, src: newSrc });
   }
 
   return defaultTransformer.transform(params);
