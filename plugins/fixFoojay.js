@@ -1,18 +1,41 @@
 /**
- * Expo config plugin: upgrades foojay-resolver-convention from 0.8.0 → 0.9.0
+ * Expo config plugin: fixes the foojay IBM_SEMERU crash with Gradle 9.3.1
  *
- * The version Expo generates (0.8.0) crashes with Gradle 9.3.1 because it
- * references JvmVendorSpec.IBM_SEMERU which no longer resolves correctly.
- * Version 0.9.0 fixes this.
+ * Two-pronged fix:
+ * 1. gradle.properties: disable JVM toolchain auto-provisioning so the
+ *    foojay plugin never tries to load DistributionsKt (which crashes).
+ * 2. settings.gradle / settings.gradle.kts: upgrade foojay to 0.9.0
+ *    which fixes the IBM_SEMERU field reference.
  */
-const { withSettingsGradle } = require('@expo/config-plugins');
+const { withGradleProperties, withSettingsGradle } = require('@expo/config-plugins');
 
-module.exports = function fixFoojay(config) {
+function fixGradleProperties(config) {
+  return withGradleProperties(config, (config) => {
+    const props = config.modResults.filter(
+      item => !['org.gradle.java.installations.auto-provision',
+                 'org.gradle.java.installations.auto-download'].includes(item.key)
+    );
+    props.push(
+      { type: 'property', key: 'org.gradle.java.installations.auto-provision', value: 'false' },
+      { type: 'property', key: 'org.gradle.java.installations.auto-download', value: 'false' }
+    );
+    config.modResults = props;
+    return config;
+  });
+}
+
+function fixSettingsGradle(config) {
   return withSettingsGradle(config, (config) => {
     config.modResults.contents = config.modResults.contents.replace(
-      /id\s+"org\.gradle\.toolchains\.foojay-resolver-convention"\s+version\s+"[^"]+"/,
-      'id "org.gradle.toolchains.foojay-resolver-convention" version "0.9.0"'
+      /id\s*[("]+org\.gradle\.toolchains\.foojay-resolver-convention[)"]+\s*version\s*[("]+[^)"]+[)"]+/g,
+      'id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"'
     );
     return config;
   });
+}
+
+module.exports = function fixFoojay(config) {
+  config = fixGradleProperties(config);
+  config = fixSettingsGradle(config);
+  return config;
 };
