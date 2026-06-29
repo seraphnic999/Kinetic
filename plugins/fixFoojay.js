@@ -1,15 +1,18 @@
 /**
- * Expo config plugin — fixes two local Android build/runtime issues:
+ * Expo config plugin — fixes local Android build issues:
  * 1. Gradle 9.x foojay crash → downgrade wrapper to 8.13
- * 2. New Architecture (BridgelessReact) → disable via gradle.properties
- *    New Arch causes "EventEmitter of undefined" crash because our
- *    requireNativeComponent stubs are incompatible with the Fabric renderer.
+ *
+ * Note: New Architecture MUST stay enabled. In old-arch mode, ExpoModulesCore
+ * sets up globalThis.expo asynchronously via bridge, so it's not ready when
+ * module 77 (expo-modules-core EventEmitter) loads → crash.
+ * In new-arch, ExpoModulesCore uses JSI to install globalThis.expo synchronously
+ * before any JS runs → works correctly.
  */
-const { withDangerousMod, withGradleProperties } = require('@expo/config-plugins');
+const { withDangerousMod } = require('@expo/config-plugins');
 const fs   = require('fs');
 const path = require('path');
 
-function fixGradleVersion(config) {
+module.exports = function fixFoojay(config) {
   return withDangerousMod(config, [
     'android',
     (config) => {
@@ -31,18 +34,4 @@ function fixGradleVersion(config) {
       return config;
     },
   ]);
-}
-
-function fixNewArch(config) {
-  return withGradleProperties(config, (config) => {
-    config.modResults = config.modResults.filter(item => item.key !== 'newArchEnabled');
-    config.modResults.push({ type: 'property', key: 'newArchEnabled', value: 'false' });
-    return config;
-  });
-}
-
-module.exports = function fixFoojay(config) {
-  config = fixGradleVersion(config);
-  config = fixNewArch(config);
-  return config;
 };
