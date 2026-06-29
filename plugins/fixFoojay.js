@@ -23,10 +23,11 @@ module.exports = function fixFoojay(config) {
         let src = fs.readFileSync(wrapperProps, 'utf8');
         const before = src;
 
-        // Downgrade Gradle 9.x to 8.10.2 — foojay 0.5.0 works fine on 8.x
+        // AGP requires Gradle ≥ 8.13. Gradle 9.x removed IBM_SEMERU from JvmVendorSpec.
+        // Gradle 8.13 is the sweet spot: meets AGP minimum and foojay 0.5.0 still works.
         src = src.replace(
           /distributionUrl=.*gradle-[\d.]+-bin\.zip/,
-          'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip'
+          'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip'
         );
 
         if (src !== before) {
