@@ -112,10 +112,9 @@ module.exports.transform = function transform(params) {
           "var __rnc = require('react-native').requireNativeComponent;\n" +
           "var __NC;\n" +
           "try { __NC = __rnc(" + JSON.stringify(name) + "); } catch(e) { __NC = {}; }\n" +
-          "module.exports = __NC;\n" +
-          "module.exports['default'] = __NC;\n"
+          "module.exports = __NC;\n"
         )
-      : "'use strict';\nmodule.exports = {};\nmodule.exports['default'] = {};\n";
+      : "'use strict';\nmodule.exports = {};\n";
 
     return defaultTransformer.transform({ ...params, src: newSrc });
   }
