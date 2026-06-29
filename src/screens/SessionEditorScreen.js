@@ -296,6 +296,7 @@ const newIntervals = () => ({
 export default function SessionEditorScreen({ navigation, route }) {
   const existingSession = route.params?.session ?? null;
   const { height: windowHeight } = useWindowDimensions();
+  const [navH, setNavH] = useState(0);
 
   const [sessionName, setSessionName] = useState(existingSession?.name ?? '');
   const [restTimerSecs, setRestTimerSecs] = useState(existingSession?.restTimerSecs ?? 60);
@@ -397,9 +398,11 @@ export default function SessionEditorScreen({ navigation, route }) {
   const getExerciseLabel = (ex) => {
     if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${ex.duration} min`;
     if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s`;
-    if (ex.type === EXERCISE_TYPES.COMBO)     return `🔗 Combo • ${ex.sets} sets`;
-    const name = ex.name === 'Other' ? (ex.customName || 'Unnamed') : (ex.name || 'Unnamed');
-    return `${name} — ${ex.weight}kg • ${ex.sets}×${ex.reps}`;
+    if (ex.type === EXERCISE_TYPES.COMBO)     return `🔗 Combo — ${ex.sets} sets`;
+    const section = ex.bodySection || '';
+    const name    = ex.name === 'Other' ? (ex.customName || 'Unnamed') : (ex.name || 'Unnamed');
+    const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
+    return section ? `${section} — ${name} — ${details}` : `${name} — ${details}`;
   };
 
   const isReorderable = (ex) =>
@@ -410,7 +413,7 @@ export default function SessionEditorScreen({ navigation, route }) {
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Nav Header */}
-      <View style={styles.navHeader}>
+      <View style={styles.navHeader} onLayout={e => setNavH(e.nativeEvent.layout.height)}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
@@ -422,7 +425,11 @@ export default function SessionEditorScreen({ navigation, route }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={[styles.scroll, Platform.OS === 'web' && navH > 0 && { height: windowHeight - navH }]}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
 
         {/* Session Name */}
         <View style={styles.section}>
@@ -611,7 +618,11 @@ export default function SessionEditorScreen({ navigation, route }) {
               { type: EXERCISE_TYPES.COMBO,     icon: 'git-merge-outline', label: 'Combo Exercise',    desc: 'Two or more exercises, shared set count' },
               { type: EXERCISE_TYPES.WARMUP,    icon: 'flame-outline',     label: 'Warmup',            desc: 'Treadmill or steps — always runs first' },
               { type: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',     label: 'Intervals',         desc: 'Walk / run intervals — always runs last' },
-            ].map(opt => (
+            ].filter(opt => {
+              if (opt.type === EXERCISE_TYPES.WARMUP)    return !exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
+              if (opt.type === EXERCISE_TYPES.INTERVALS) return !exercises.some(e => e.type === EXERCISE_TYPES.INTERVALS);
+              return true;
+            }).map(opt => (
               <TouchableOpacity
                 key={opt.type}
                 style={menuStyles.option}

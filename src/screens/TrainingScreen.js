@@ -287,6 +287,9 @@ export default function TrainingScreen({ navigation, route }) {
   // Session timer
   const [elapsedSec, setElapsedSec]   = useState(0);
 
+  // End confirmation
+  const [showEndConfirm, setShowEndConfirm] = useState(false);
+
   // Rest timer
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
   const [restActive, setRestActive]   = useState(false);
@@ -464,12 +467,7 @@ export default function TrainingScreen({ navigation, route }) {
     if (!exs.length) return;
     const allDone = exs.every(e => exStates[e.id]?.status === 'complete');
     if (allDone) {
-      setTimeout(() => {
-        Alert.alert('🏆 Session Complete!', 'All exercises done. End the session?', [
-          { text: 'Keep Going', style: 'cancel' },
-          { text: 'End Session', onPress: doEndSession },
-        ]);
-      }, 600);
+      setTimeout(() => setShowEndConfirm(true), 600);
     }
   }, [exStates]);
 
@@ -511,11 +509,8 @@ export default function TrainingScreen({ navigation, route }) {
   }, [elapsedSec, perfOrder, session, startTime, navigation]);
 
   const confirmEnd = useCallback(() => {
-    Alert.alert('End Session?', 'Are you sure you want to end this training session?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'End Session', style: 'destructive', onPress: doEndSession },
-    ]);
-  }, [doEndSession]);
+    setShowEndConfirm(true);
+  }, []);
 
   // ─── Exercise selection ───────────────────────────────────────────────────
   const selectExercise = useCallback((id) => {
@@ -669,6 +664,34 @@ export default function TrainingScreen({ navigation, route }) {
           </ScrollView>
         )}
       </View>
+
+      {/* ── End Session Confirmation ────────────────────────────────── */}
+      {showEndConfirm && (
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>End Session?</Text>
+            <Text style={styles.confirmMsg}>
+              Are you sure you want to end this training session?
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setShowEndConfirm(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmCancelTxt}>Keep Training</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmEndBtn}
+                onPress={() => { setShowEndConfirm(false); doEndSession(); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmEndTxt}>End Session</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -696,4 +719,33 @@ const styles = StyleSheet.create({
   exInfo:      { flex: 1 },
   exName:      { ...Typography.h3, color: Colors.textPrimary },
   exMeta:      { ...Typography.bodySmall, color: Colors.textSecondary, marginTop: 2 },
+
+  // End session confirmation overlay
+  confirmOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#000000CC',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 999,
+  },
+  confirmBox: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    padding: Spacing.xl, margin: Spacing.xl, gap: Spacing.md,
+    borderWidth: 1, borderColor: Colors.border,
+    ...Shadows.card,
+  },
+  confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
+  confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
+  confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
+  confirmCancelBtn: {
+    flex: 1, height: 48, borderRadius: Radius.md,
+    backgroundColor: Colors.surfaceRaised,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  confirmCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
+  confirmEndBtn: {
+    flex: 1, height: 48, borderRadius: Radius.md,
+    backgroundColor: Colors.danger,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  confirmEndTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
 });
