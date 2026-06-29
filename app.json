@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "com.seraphnic999.kinetic",
+      "newArchEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
