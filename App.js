@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useCallback } from 'react';
-import { Platform, View } from 'react-native';
+import { Platform, View, Text, ScrollView, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
@@ -13,6 +13,41 @@ import SessionListScreen   from './src/screens/SessionListScreen';
 import SessionEditorScreen from './src/screens/SessionEditorScreen';
 import TrainingScreen      from './src/screens/TrainingScreen';
 import SummaryScreen       from './src/screens/SummaryScreen';
+
+// ── Error boundary — catches rendering crashes ────────────────────────────────
+class ErrorBoundary extends React.Component {
+  state = { error: null };
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e) { global.__KINETIC_CRASH__ = { name: e.name, message: e.message, stack: (e.stack ?? '').slice(0, 1200) }; }
+  render() {
+    const crash = this.state.error ? {
+      name: this.state.error.name,
+      message: this.state.error.message,
+      stack: (this.state.error.stack ?? '').slice(0, 1200),
+    } : global.__KINETIC_CRASH__;
+    if (crash) return <CrashScreen crash={crash} />;
+    return this.props.children;
+  }
+}
+
+function CrashScreen({ crash }) {
+  return (
+    <View style={cs.root}>
+      <Text style={cs.title}>💥 {crash.name}</Text>
+      <Text style={cs.msg}>{crash.message}</Text>
+      <ScrollView style={cs.scroll}>
+        <Text style={cs.stack}>{crash.stack}</Text>
+      </ScrollView>
+    </View>
+  );
+}
+const cs = StyleSheet.create({
+  root:   { flex: 1, backgroundColor: '#0D0D0D', padding: 20, paddingTop: 60 },
+  title:  { color: '#FF6B2B', fontSize: 22, fontWeight: '700', marginBottom: 12 },
+  msg:    { color: '#FFFFFF', fontSize: 15, marginBottom: 16, lineHeight: 22 },
+  scroll: { flex: 1 },
+  stack:  { color: '#888', fontSize: 11, fontFamily: 'monospace', lineHeight: 18 },
+});
 
 // Inject web-only CSS: prevent page scroll and register the DSEG7 font
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -46,6 +81,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider style={{ flex: 1 }}>
         <NavigationContainer>
@@ -66,5 +102,6 @@ export default function App() {
         </NavigationContainer>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

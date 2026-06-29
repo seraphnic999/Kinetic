@@ -88,21 +88,18 @@ function buildFlowReplacement(src) {
 // ─── Main transform hook ──────────────────────────────────────────────────────
 
 module.exports.transform = function transform(params) {
-  const { src, filename } = params;
+  const { src, filename, options } = params;
 
-  if (src && src.includes('codegenNativeComponent')) {
-    // Replace the ENTIRE file for both .js (Flow) and .ts/.tsx (TypeScript).
-    //
-    // For Flow files: Hermes can't parse the remaining complex Flow types after
-    // an import-only replacement, so we need a full replacement.
-    //
-    // For TypeScript files: babel-plugin-codegen triggers on the CALL to
-    // codegenNativeComponent, not just on the import. Removing the import
-    // but keeping the call still fires the plugin. Full replacement fixes this.
-    //
-    // Extract the native component name and produce minimal plain JS that
-    // calls requireNativeComponent instead. No codegen, no Flow/TS types,
-    // Hermes-safe, works at runtime on old-arch (Expo Go).
+  // !! CRITICAL: Only apply the codegenNativeComponent workaround in DEVELOPMENT.
+  //
+  // In development (Expo Go), proper codegen never runs so we must stub it out
+  // with requireNativeComponent to prevent bundle failures.
+  //
+  // In production (EAS build), Gradle runs the real codegen
+  // (:app:generateCodegenArtifactsFromSchema) BEFORE Metro bundles. The
+  // generated artifacts are correct and complete — replacing them with our
+  // stubs breaks the native interface and causes an immediate crash.
+  if (options.dev && src && src.includes('codegenNativeComponent')) {
     const nameMatch = src.match(NATIVE_NAME_RE);
     const name = nameMatch ? nameMatch[1] : null;
 
