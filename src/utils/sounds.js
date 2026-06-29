@@ -1,14 +1,23 @@
-import { Audio } from 'expo-av';
+/**
+ * Sound utilities for Kinetic.
+ * Uses expo-audio (SDK 56+) instead of the deprecated expo-av.
+ *
+ * Two sounds:
+ *   beep_rest.wav     — ascending two-tone, played when rest timer expires
+ *   beep_interval.wav — short pip, played on each interval phase change
+ */
+import { Platform } from 'react-native';
+import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 
-let _restSound = null;
-let _intervalSound = null;
+let _restPlayer     = null;
+let _intervalPlayer = null;
 
 export const initAudio = async () => {
+  if (Platform.OS === 'web') return; // web uses AudioContext (handled per-play)
   try {
-    await Audio.setAudioModeAsync({
+    await setAudioModeAsync({
       playsInSilentModeIOS: true,
       staysActiveInBackground: false,
-      shouldDuckAndroid: false,
     });
   } catch (e) {
     console.warn('[sounds] setAudioModeAsync failed:', e);
@@ -16,52 +25,79 @@ export const initAudio = async () => {
 };
 
 export const loadSounds = async () => {
+  if (Platform.OS === 'web') return;
   try {
-    const { sound: restSound } = await Audio.Sound.createAsync(
-      require('../../assets/beep_rest.wav'),
-      { shouldPlay: false, volume: 1.0 }
-    );
-    _restSound = restSound;
+    _restPlayer = createAudioPlayer(require('../../assets/beep_rest.wav'));
   } catch (e) {
-    console.warn('[sounds] Could not load rest beep:', e);
+    console.warn('[sounds] Could not create rest beep player:', e);
   }
-
   try {
-    const { sound: intervalSound } = await Audio.Sound.createAsync(
-      require('../../assets/beep_interval.wav'),
-      { shouldPlay: false, volume: 1.0 }
-    );
-    _intervalSound = intervalSound;
+    _intervalPlayer = createAudioPlayer(require('../../assets/beep_interval.wav'));
   } catch (e) {
-    console.warn('[sounds] Could not load interval beep:', e);
+    console.warn('[sounds] Could not create interval beep player:', e);
   }
 };
 
 export const unloadSounds = async () => {
-  try { if (_restSound)    await _restSound.unloadAsync();    } catch (_) {}
-  try { if (_intervalSound) await _intervalSound.unloadAsync(); } catch (_) {}
-  _restSound = null;
-  _intervalSound = null;
+  try { _restPlayer?.remove();     } catch (_) {}
+  try { _intervalPlayer?.remove(); } catch (_) {}
+  _restPlayer     = null;
+  _intervalPlayer = null;
 };
 
-// Ascending two-tone: "rest is over, time to work"
-export const playRestBeep = async () => {
+// ─── Web Audio API beep helper ────────────────────────────────────────────────
+let _audioCtx = null;
+const _getCtx = () => {
+  if (Platform.OS !== 'web') return null;
   try {
-    if (_restSound) {
-      await _restSound.setPositionAsync(0);
-      await _restSound.playAsync();
+    if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    return _audioCtx;
+  } catch (_) { return null; }
+};
+
+const _webBeep = (freq, duration, vol = 0.5) => {
+  const ctx = _getCtx();
+  if (!ctx) return;
+  const osc  = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+};
+
+// ─── Public play functions ────────────────────────────────────────────────────
+
+/** Rest timer expired — ascending two-tone */
+export const playRestBeep = async () => {
+  if (Platform.OS === 'web') {
+    _webBeep(880, 0.18);
+    setTimeout(() => _webBeep(1100, 0.28), 180);
+    return;
+  }
+  try {
+    if (_restPlayer) {
+      _restPlayer.seekTo(0);
+      _restPlayer.play();
     }
   } catch (e) {
     console.warn('[sounds] playRestBeep failed:', e);
   }
 };
 
-// Short pip: interval phase change or warmup complete
+/** Interval phase change — short sharp pip */
 export const playIntervalBeep = async () => {
+  if (Platform.OS === 'web') {
+    _webBeep(1320, 0.12);
+    return;
+  }
   try {
-    if (_intervalSound) {
-      await _intervalSound.setPositionAsync(0);
-      await _intervalSound.playAsync();
+    if (_intervalPlayer) {
+      _intervalPlayer.seekTo(0);
+      _intervalPlayer.play();
     }
   } catch (e) {
     console.warn('[sounds] playIntervalBeep failed:', e);
