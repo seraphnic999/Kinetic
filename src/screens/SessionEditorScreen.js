@@ -398,7 +398,12 @@ export default function SessionEditorScreen({ navigation, route }) {
   const getExerciseLabel = (ex) => {
     if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${ex.duration} min`;
     if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s`;
-    if (ex.type === EXERCISE_TYPES.COMBO)     return `🔗 Combo — ${ex.sets} sets`;
+    if (ex.type === EXERCISE_TYPES.COMBO) {
+      const parts = [...new Set(
+        (ex.subExercises ?? []).map(s => s.bodySection).filter(Boolean)
+      )].join(' / ');
+      return parts ? `🔗 ${parts} — ${ex.sets} sets` : `🔗 Combo — ${ex.sets} sets`;
+    }
     const section = ex.bodySection || '';
     const name    = ex.name === 'Other' ? (ex.customName || 'Unnamed') : (ex.name || 'Unnamed');
     const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
