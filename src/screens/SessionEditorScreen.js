@@ -426,7 +426,7 @@ export default function SessionEditorScreen({ navigation, route }) {
       </View>
 
       <ScrollView
-        style={[styles.scroll, Platform.OS === 'web' && navH > 0 && { height: windowHeight - navH }]}
+        style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >

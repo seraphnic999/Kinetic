@@ -54,7 +54,7 @@ export default function App() {
             initialRouteName="SessionList"
             screenOptions={{
               headerShown: false,
-              cardStyle: { backgroundColor: Colors.background },
+              cardStyle: { backgroundColor: Colors.background, flex: 1 },
               animation: 'slide_from_right',
             }}
           >
