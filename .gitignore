@@ -10,10 +10,9 @@ web-build/
 *.orig.*
 .DS_Store
 npm-debug.*
-*.orig.*
 __pycache__/
 *.pyc
 .env
 .env.local
-"android/" 
-"ios/" 
+android/
+ios/
