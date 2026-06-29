@@ -74,8 +74,8 @@ const _webBeep = (freq, duration, vol = 0.5) => {
 /** Rest timer expired — ascending two-tone */
 export const playRestBeep = async () => {
   if (Platform.OS === 'web') {
-    _webBeep(880, 0.18);
-    setTimeout(() => _webBeep(1100, 0.28), 180);
+    _webBeep(880,  0.28, 0.75);
+    setTimeout(() => _webBeep(1100, 0.42, 0.75), 280);
     return;
   }
   try {
@@ -91,7 +91,7 @@ export const playRestBeep = async () => {
 /** Interval phase change — short sharp pip */
 export const playIntervalBeep = async () => {
   if (Platform.OS === 'web') {
-    _webBeep(1320, 0.12);
+    _webBeep(1320, 0.22, 0.75);
     return;
   }
   try {

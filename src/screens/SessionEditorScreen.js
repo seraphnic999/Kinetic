@@ -263,8 +263,12 @@ function IntervalsForm({ exercise, onChange }) {
   return (
     <View style={formStyles.container}>
       <View style={formStyles.stepperRow}>
-        <Stepper label="Reps" value={exercise.reps ?? 5} onChange={v => onChange({ ...exercise, reps: v })} min={1} max={99} />
-        <Stepper label="Interval (sec)" value={exercise.intervalLength ?? 60} onChange={v => onChange({ ...exercise, intervalLength: v })} min={10} max={600} />
+        <Stepper label="Reps"         value={exercise.reps          ?? 8}  onChange={v => onChange({ ...exercise, reps: v })}              min={1}  max={99}  />
+        <Stepper label="Run (sec)"    value={exercise.intervalLength ?? 45} onChange={v => onChange({ ...exercise, intervalLength: v })}    min={5}  max={600} />
+      </View>
+      <View style={formStyles.stepperRow}>
+        <Stepper label="Walk (sec)"   value={exercise.walkDuration   ?? 60} onChange={v => onChange({ ...exercise, walkDuration: v })}     min={5}  max={600} />
+        <Stepper label="Trans. (sec)" value={exercise.transitionDuration ?? 10} onChange={v => onChange({ ...exercise, transitionDuration: v })} min={0} max={60} />
       </View>
     </View>
   );
@@ -318,7 +322,7 @@ const newWarmup = () => ({
 });
 const newIntervals = () => ({
   id: generateId(), type: EXERCISE_TYPES.INTERVALS,
-  reps: 8, intervalLength: 45,
+  reps: 8, intervalLength: 45, walkDuration: 60, transitionDuration: 10,
 });
 
 // ---------- Main Screen ----------
@@ -437,7 +441,7 @@ export default function SessionEditorScreen({ navigation, route }) {
 
   const getExerciseLabel = (ex) => {
     if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${ex.duration} min`;
-    if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s`;
+    if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
     if (ex.type === EXERCISE_TYPES.COMBO) {
       const parts = [...new Set(
         (ex.subExercises ?? []).map(s => s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection).filter(Boolean)

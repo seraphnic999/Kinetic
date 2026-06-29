@@ -13,9 +13,6 @@ import { EXERCISE_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const WALK_DURATION  = 60;
-const TRANS_DURATION = 10;
-
 const PHASE = {
   WALKING:   'walking',
   TRANS_IN:  'trans_in',
@@ -55,7 +52,7 @@ const getExerciseMeta = (ex, st) => {
   if (ex.type === EXERCISE_TYPES.WARMUP)
     return `${ex.warmupType} · ${ex.duration} min`;
   if (ex.type === EXERCISE_TYPES.INTERVALS)
-    return `${ex.reps} reps · ${ex.intervalLength}s run`;
+    return `${ex.reps} reps · ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
   return '';
 };
 
@@ -75,7 +72,9 @@ const initExerciseStates = (exercises) => {
     } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
       s[ex.id] = {
         repsLeft: ex.reps ?? 8, reps: ex.reps ?? 8,
-        intervalLength: ex.intervalLength ?? 45,
+        intervalLength:     ex.intervalLength     ?? 45,
+        walkDuration:       ex.walkDuration       ?? 60,
+        transitionDuration: ex.transitionDuration ?? 10,
         phase: null, timeLeft: 0, isRunning: false, status: 'pending',
       };
     }
@@ -137,7 +136,7 @@ function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
           onChange={v => onUpdate({ setsLeft: v })} />
       </View>
 
-      <ScrollView style={d.subScroll} showsVerticalScrollIndicator={false}>
+      <View>
         {(exercise.subExercises ?? []).map((sub, idx) => {
           const nm = sub.name === 'Other' ? (sub.customName || `Exercise ${idx+1}`) : (sub.name || `Exercise ${idx+1}`);
           return (
@@ -155,7 +154,7 @@ function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
             </View>
           );
         })}
-      </ScrollView>
+      </View>
 
       {done
         ? <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
@@ -226,7 +225,7 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
       <View style={[iv.phaseBox, { borderColor: pColor }]}>
         <Text style={[iv.phaseLabel, { color: pColor }]}>{pLabel}</Text>
         <Text style={[iv.timer, { color: pColor }]}>
-          {notStart ? formatTime(WALK_DURATION) : formatTime(state.timeLeft)}
+          {notStart ? formatTime(state.walkDuration ?? 60) : formatTime(state.timeLeft)}
         </Text>
       </View>
 
@@ -417,16 +416,16 @@ export default function TrainingScreen({ navigation, route }) {
       const st = prev[id];
       let next;
       switch (st.phase) {
-        case PHASE.WALKING:   next = { ...st, phase: PHASE.TRANS_IN,  timeLeft: TRANS_DURATION }; break;
-        case PHASE.TRANS_IN:  next = { ...st, phase: PHASE.RUNNING,   timeLeft: st.intervalLength }; break;
-        case PHASE.RUNNING:   next = { ...st, phase: PHASE.TRANS_OUT, timeLeft: TRANS_DURATION }; break;
+        case PHASE.WALKING:   next = { ...st, phase: PHASE.TRANS_IN,  timeLeft: st.transitionDuration }; break;
+        case PHASE.TRANS_IN:  next = { ...st, phase: PHASE.RUNNING,   timeLeft: st.intervalLength };     break;
+        case PHASE.RUNNING:   next = { ...st, phase: PHASE.TRANS_OUT, timeLeft: st.transitionDuration }; break;
         case PHASE.TRANS_OUT: {
           const nr = st.repsLeft - 1;
           if (nr <= 0) {
             setTimeout(() => { addToPerfOrder(id); setSelectedId(null); }, 300);
             next = { ...st, repsLeft: 0, isRunning: false, status: 'complete' };
           } else {
-            next = { ...st, repsLeft: nr, phase: PHASE.WALKING, timeLeft: WALK_DURATION };
+            next = { ...st, repsLeft: nr, phase: PHASE.WALKING, timeLeft: st.walkDuration };
           }
           break;
         }
@@ -652,8 +651,8 @@ export default function TrainingScreen({ navigation, route }) {
                   if (starting) addToPerfOrder(selectedId);
                   return { ...prev, [selectedId]: {
                     ...st, isRunning: !st.isRunning,
-                    phase:    starting ? PHASE.WALKING    : st.phase,
-                    timeLeft: starting ? WALK_DURATION    : st.timeLeft,
+                    phase:    starting ? PHASE.WALKING       : st.phase,
+                    timeLeft: starting ? st.walkDuration     : st.timeLeft,
                   }};
                 })}
                 onUpdateReps={v => setExStates(prev => ({
