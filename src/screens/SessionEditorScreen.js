@@ -805,7 +805,7 @@ const styles = StyleSheet.create({
   },
   comboSets: { alignItems: 'flex-start' },
   subExerciseCard: {
-    backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md, padding: Spacing.md,
+    backgroundColor: Colors.surfaceNested, borderRadius: Radius.md, padding: Spacing.md,
     gap: Spacing.md,
   },
   subExerciseHeader: {

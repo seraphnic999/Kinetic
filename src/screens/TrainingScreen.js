@@ -289,7 +289,7 @@ const d = StyleSheet.create({
                gap: Spacing.xs, paddingVertical: Spacing.md },
   backTxt:   { ...Typography.body, color: Colors.textSecondary },
   subScroll: { maxHeight: 280 },
-  subCard:   { backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md,
+  subCard:   { backgroundColor: Colors.surfaceNested, borderRadius: Radius.md,
                padding: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.sm },
   subName:   { ...Typography.h3, color: Colors.textPrimary },
   subSection:{ ...Typography.bodySmall, color: Colors.amber },

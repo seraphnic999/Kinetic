@@ -10,6 +10,8 @@ export const Colors = {
   background:     '#0D0D0D',  // near-black base
   surface:        '#1C1C1E',  // card / elevated surface
   surfaceRaised:  '#2C2C2E',  // inputs, chips, inner cards
+  surfaceNested:  '#3A3A3D',  // nested cards (e.g. combo sub-exercises) — needs
+                               // to read as distinct from surfaceRaised controls
 
   // Primary brand
   primary:        '#FF6B2B',  // Kinetic Orange — CTAs, active states
