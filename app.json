@@ -27,6 +27,14 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["./plugins/fixFoojay"]
+    "plugins": [
+      "./plugins/fixFoojay",
+      [
+        "expo-audio",
+        {
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
   }
 }

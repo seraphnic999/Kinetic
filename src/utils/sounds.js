@@ -16,8 +16,9 @@ export const initAudio = async () => {
   if (Platform.OS === 'web') return; // web uses AudioContext (handled per-play)
   try {
     await setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
+      playsInSilentMode: true,        // Android: play even when ringer is silent/vibrate
+      interruptionMode: 'mixWithOthers', // don't steal audio focus for short UI beeps
+      shouldPlayInBackground: false,
     });
   } catch (e) {
     console.warn('[sounds] setAudioModeAsync failed:', e);
@@ -80,7 +81,7 @@ export const playRestBeep = async () => {
   }
   try {
     if (_restPlayer) {
-      _restPlayer.seekTo(0);
+      await _restPlayer.seekTo(0);
       _restPlayer.play();
     }
   } catch (e) {
@@ -96,7 +97,7 @@ export const playIntervalBeep = async () => {
   }
   try {
     if (_intervalPlayer) {
-      _intervalPlayer.seekTo(0);
+      await _intervalPlayer.seekTo(0);
       _intervalPlayer.play();
     }
   } catch (e) {
