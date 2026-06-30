@@ -11,14 +11,15 @@ export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'no
   const L = size === 'large';
   return (
     <View style={styles.container}>
-      {label && <Text style={[styles.label, L && styles.labelLarge]}>{label}</Text>}
+      {label && <Text style={[styles.label, L && styles.labelLarge]} numberOfLines={1}>{label}</Text>}
       <View style={[styles.row, L && styles.rowLarge]}>
         <TouchableOpacity
           style={[styles.btn, L && styles.btnLarge]}
           onPress={() => !readOnly && onChange(Math.max(min, value - 1))}
           activeOpacity={readOnly ? 1 : 0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="remove" size={L ? 26 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Ionicons name="remove" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
         </TouchableOpacity>
 
         <TextInput
@@ -38,8 +39,9 @@ export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'no
           style={[styles.btn, L && styles.btnLarge]}
           onPress={() => !readOnly && onChange(Math.min(max, value + 1))}
           activeOpacity={readOnly ? 1 : 0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="add" size={L ? 26 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Ionicons name="add" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -47,24 +49,25 @@ export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'no
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', flex: 1 },
+  container: { alignItems: 'center', flex: 1, minWidth: 0 },
   label: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
-  labelLarge: { fontSize: 15, marginBottom: Spacing.sm },
+  labelLarge: { fontSize: 13, marginBottom: Spacing.xs },
   row: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch',
     backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md, overflow: 'hidden',
   },
   rowLarge: { borderRadius: Radius.lg },
-  btn:      { width: 40, height: 44, alignItems: 'center', justifyContent: 'center' },
-  btnLarge: { width: 56, height: 60 },
+  // Buttons stay a fixed comfortable tap size; the input FLEXES to absorb
+  // whatever width remains, so 3-across rows never overflow on narrow phones.
+  btn:      { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
+  btnLarge: { width: 38, height: 52 },
   input: {
-    width: 56, height: 44, textAlign: 'center',
+    flex: 1, minWidth: 0, height: 44, textAlign: 'center', paddingHorizontal: 2,
     ...Typography.h3, color: Colors.textPrimary,
     backgroundColor: Colors.background,
   },
   inputLarge: {
-    width: 76, height: 60,
-    ...Typography.h2, color: Colors.textPrimary,
-    backgroundColor: Colors.background,
+    height: 52,
+    ...Typography.h3, color: Colors.textPrimary,
   },
 });

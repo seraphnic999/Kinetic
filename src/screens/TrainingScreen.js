@@ -258,7 +258,7 @@ const d = StyleSheet.create({
   container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
   name:      { ...Typography.h1, color: Colors.textPrimary },
   subtitle:  { ...Typography.body, color: Colors.textSecondary, marginTop: -Spacing.sm },
-  stepperRow:{ flexDirection: 'row', gap: Spacing.md, justifyContent: 'space-around', marginVertical: Spacing.md },
+  stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md },
   actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.sm, ...Shadows.orange },

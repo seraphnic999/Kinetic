@@ -33,14 +33,15 @@ function Stepper({ value, onChange, min = 0, max = 999, label }) {
 
   return (
     <View style={stepperStyles.container}>
-      {label && <Text style={stepperStyles.label}>{label}</Text>}
+      {label && <Text style={stepperStyles.label} numberOfLines={1}>{label}</Text>}
       <View style={stepperStyles.row}>
         <TouchableOpacity
           style={stepperStyles.btn}
           onPress={() => onChange(Math.max(min, value - 1))}
           activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="remove" size={20} color={Colors.textPrimary} />
+          <Ionicons name="remove" size={18} color={Colors.textPrimary} />
         </TouchableOpacity>
         <TextInput
           style={stepperStyles.input}
@@ -54,25 +55,28 @@ function Stepper({ value, onChange, min = 0, max = 999, label }) {
           style={stepperStyles.btn}
           onPress={() => onChange(Math.min(max, value + 1))}
           activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="add" size={20} color={Colors.textPrimary} />
+          <Ionicons name="add" size={18} color={Colors.textPrimary} />
         </TouchableOpacity>
       </View>
     </View>
   );
 }
 const stepperStyles = StyleSheet.create({
-  container: { alignItems: 'center', flex: 1 },
+  container: { alignItems: 'center', flex: 1, minWidth: 0 },
   label: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
   row: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch',
     backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md, overflow: 'hidden',
   },
+  // Buttons stay a fixed comfortable tap size; the input FLEXES to absorb
+  // whatever width remains, so 3-across rows never overflow on narrow phones.
   btn: {
-    width: 40, height: 44, alignItems: 'center', justifyContent: 'center',
+    width: 34, height: 40, alignItems: 'center', justifyContent: 'center',
   },
   input: {
-    width: 56, height: 44, textAlign: 'center',
+    flex: 1, minWidth: 0, height: 40, textAlign: 'center', paddingHorizontal: 2,
     ...Typography.h3, color: Colors.textPrimary,
     backgroundColor: Colors.background,
   },
@@ -301,8 +305,7 @@ const formStyles = StyleSheet.create({
   },
   stepperRow: {
     flexDirection: 'row',
-    gap: Spacing.md,
-    justifyContent: 'space-around',
+    gap: Spacing.sm,
   },
   timerRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.lg,
