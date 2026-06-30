@@ -76,12 +76,13 @@ module.exports.transform = function transform(params) {
     const newSrc = name
       ? (
           "'use strict';\n" +
+          "Object.defineProperty(module.exports, '__esModule', { value: true });\n" +
           "var __rnc = require('react-native').requireNativeComponent;\n" +
           "var __NC;\n" +
           "try { __NC = __rnc(" + JSON.stringify(name) + "); } catch(e) { __NC = {}; }\n" +
-          "module.exports = __NC;\n"
+          "module.exports.default = __NC;\n"
         )
-      : "'use strict';\nmodule.exports = {};\n";
+      : "'use strict';\nObject.defineProperty(module.exports, '__esModule', { value: true });\nmodule.exports.default = {};\n";
 
     return defaultTransformer.transform({ ...params, src: newSrc });
   }
