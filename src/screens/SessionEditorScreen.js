@@ -5,6 +5,7 @@ import {
   FlatList, Platform, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { loadSessions, saveSessions, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES } from '../data/exercises';
@@ -348,6 +349,7 @@ const defaultSessionName = () => {
 export default function SessionEditorScreen({ navigation, route }) {
   const existingSession = route.params?.session ?? null;
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [navH, setNavH] = useState(0);
 
   // Session ID is fixed for the lifetime of this editor
@@ -480,7 +482,7 @@ export default function SessionEditorScreen({ navigation, route }) {
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Nav Header */}
-      <View style={styles.navHeader} onLayout={e => setNavH(e.nativeEvent.layout.height)}>
+      <View style={[styles.navHeader, { paddingTop: insets.top }]} onLayout={e => setNavH(e.nativeEvent.layout.height)}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>

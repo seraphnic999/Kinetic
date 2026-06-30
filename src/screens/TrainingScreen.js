@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { formatTime } from '../utils/time';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep } from '../utils/sounds';
@@ -282,6 +283,7 @@ export default function TrainingScreen({ navigation, route }) {
 
   const { session } = route.params ?? {};
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
   // Session timer
   const [elapsedSec, setElapsedSec]   = useState(0);
@@ -561,7 +563,7 @@ export default function TrainingScreen({ navigation, route }) {
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <View
-        style={styles.header}
+        style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}
         onLayout={e => setHeaderH(e.nativeEvent.layout.height)}
       >
         {/* Session name */}

@@ -4,6 +4,7 @@ import {
   Alert, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { loadSessions, saveSessions } from '../utils/storage';
@@ -29,6 +30,7 @@ const getBodyAreas = (exercises) => {
 };
 
 export default function SessionListScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
@@ -111,7 +113,7 @@ export default function SessionListScreen({ navigation }) {
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
         <View>
           <Text style={styles.headerTitle}>Kinetic</Text>
           <Text style={styles.headerSubtitle}>Your training sessions</Text>

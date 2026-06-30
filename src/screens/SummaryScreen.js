@@ -4,6 +4,7 @@ import {
   ScrollView, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { formatTime } from '../utils/time';
 import { EXERCISE_TYPES } from '../data/exercises';
@@ -106,6 +107,7 @@ const rowStyles = StyleSheet.create({
 
 export default function SummaryScreen({ navigation, route }) {
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { summary } = route.params ?? {};
 
   if (!summary) {
@@ -128,7 +130,7 @@ export default function SummaryScreen({ navigation, route }) {
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
         <Text style={styles.trophy}>🏆</Text>
         <Text style={styles.title}>Session Complete</Text>
         <Text style={styles.sessionName}>{summary.sessionName}</Text>
@@ -173,7 +175,7 @@ export default function SummaryScreen({ navigation, route }) {
       </ScrollView>
 
       {/* Home button */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
         <TouchableOpacity
           style={styles.homeBtn}
           onPress={() => navigation.popToTop()}
