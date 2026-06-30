@@ -62,12 +62,12 @@ const styles = StyleSheet.create({
   btn:      { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
   btnLarge: { width: 38, height: 52 },
   input: {
-    flex: 1, minWidth: 0, height: 44, textAlign: 'center', paddingHorizontal: 2,
+    flex: 1, minWidth: 36, height: 44, textAlign: 'center', paddingHorizontal: 2,
     ...Typography.h3, color: Colors.textPrimary,
     backgroundColor: Colors.background,
   },
   inputLarge: {
-    height: 52,
+    height: 52, minWidth: 50,
     ...Typography.h3, color: Colors.textPrimary,
   },
 });
