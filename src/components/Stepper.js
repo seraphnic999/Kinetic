@@ -7,10 +7,10 @@ import { Colors, Typography, Spacing, Radius } from '../theme';
  * Numeric stepper with +/- buttons and editable input.
  * size='normal' (editor) | 'large' (training — big touch targets for gym use)
  */
-export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'normal', readOnly = false }) {
+export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'normal', readOnly = false, containerStyle }) {
   const L = size === 'large';
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, containerStyle]}>
       {label && <Text style={[styles.label, L && styles.labelLarge]} numberOfLines={1}>{label}</Text>}
       <View style={[styles.row, L && styles.rowLarge]}>
         <TouchableOpacity

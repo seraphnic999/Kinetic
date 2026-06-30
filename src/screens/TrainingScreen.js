@@ -220,7 +220,14 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
 
       <View style={iv.repsRow}>
         <Text style={iv.repsLabel}>REPS REMAINING</Text>
-        <Stepper size="large" value={state.repsLeft} min={0} max={99} onChange={onUpdateReps} />
+        <Stepper
+          size="large"
+          value={state.repsLeft}
+          min={0}
+          max={99}
+          onChange={onUpdateReps}
+          containerStyle={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' }}
+        />
       </View>
 
       <View style={[iv.phaseBox, { borderColor: pColor }]}>
