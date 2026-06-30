@@ -140,7 +140,7 @@ function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
           min={0}
           max={99}
           onChange={v => onUpdate({ setsLeft: v })}
-          containerStyle={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' }}
+          fillRow={false}
         />
       </View>
 
@@ -233,7 +233,7 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
           min={0}
           max={99}
           onChange={onUpdateReps}
-          containerStyle={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' }}
+          fillRow={false}
         />
       </View>
 

@@ -6,11 +6,33 @@ import { Colors, Typography, Spacing, Radius } from '../theme';
 /**
  * Numeric stepper with +/- buttons and editable input.
  * size='normal' (editor) | 'large' (training — big touch targets for gym use)
+ *
+ * fillRow=true  (default): stepper shares equal width with sibling steppers
+ *                          in a flex row (e.g. WEIGHT / SETS / REPS, 3-across)
+ * fillRow=false           : stepper sizes itself to its own content — use this
+ *                          whenever the stepper is NOT sitting next to sibling
+ *                          steppers dividing up a known row width (e.g. a lone
+ *                          centered "REPS REMAINING" or "SETS LEFT" control)
+ *
+ * IMPORTANT: the flex sizing is expressed ONLY via the longhand properties
+ * (flexGrow/flexShrink/flexBasis) below — never mixed with the `flex`
+ * shorthand on a competing style object. React Native merges style arrays by
+ * shallow key assignment, so `flex: 1` in one object and `flexGrow: 0` in
+ * another can BOTH end up in the flattened style simultaneously since they
+ * are different keys — precedence between them is not reliably guaranteed.
+ * Keeping a single source of truth here avoids that whole class of bug.
  */
-export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'normal', readOnly = false, containerStyle }) {
+export function Stepper({
+  value, onChange, min = 0, max = 999, label,
+  size = 'normal', readOnly = false, fillRow = true, containerStyle,
+}) {
   const L = size === 'large';
+  const flexStyle = fillRow
+    ? { flexGrow: 1, flexShrink: 1, flexBasis: 0 }
+    : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' };
+
   return (
-    <View style={[styles.container, containerStyle]}>
+    <View style={[styles.container, flexStyle, containerStyle]}>
       {label && <Text style={[styles.label, L && styles.labelLarge]} numberOfLines={1}>{label}</Text>}
       <View style={[styles.row, L && styles.rowLarge]}>
         <TouchableOpacity
@@ -49,7 +71,10 @@ export function Stepper({ value, onChange, min = 0, max = 999, label, size = 'no
 }
 
 const styles = StyleSheet.create({
-  container: { alignItems: 'center', flex: 1, minWidth: 0 },
+  // NOTE: no flex properties here at all — they live exclusively in the
+  // computed `flexStyle` above so there is never more than one source
+  // of truth for how this component sizes itself horizontally.
+  container: { alignItems: 'center', minWidth: 0 },
   label: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
   labelLarge: { fontSize: 13, marginBottom: Spacing.xs },
   row: {
@@ -62,7 +87,8 @@ const styles = StyleSheet.create({
   btn:      { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
   btnLarge: { width: 38, height: 52 },
   input: {
-    flex: 1, minWidth: 36, height: 44, textAlign: 'center', paddingHorizontal: 2,
+    flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 36, height: 44,
+    textAlign: 'center', paddingHorizontal: 2,
     ...Typography.h3, color: Colors.textPrimary,
     backgroundColor: Colors.background,
   },
