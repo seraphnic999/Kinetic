@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Alert, StatusBar, FlatList, useWindowDimensions, Animated,
-  Platform,
+  Platform, AppState,
 } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +28,43 @@ const PHASE_LABEL = {
   [PHASE.TRANS_OUT]: 'TRANSITION',
 };
 
+// ─── Background-resilient interval phase advancement ───────────────────────────
+// Pure function: given the current exercise state and the absolute timestamp
+// (ms since epoch) at which the CURRENT phase is due to end, advance through
+// as many phases as necessary to catch up to `nowMs`. Used both for routine
+// 1-second ticks (where at most one phase boundary is crossed) and for
+// resuming from the background after an arbitrary gap (where many phases may
+// need to be fast-forwarded through at once). Returns the new state plus the
+// new phase-end timestamp, so the caller can keep its anchor ref in sync.
+function fastForwardIntervals(state, phaseEndMs, nowMs) {
+  let st = state;
+  let endMs = phaseEndMs;
+  while (endMs <= nowMs && st.isRunning) {
+    let nextPhase, nextDurSecs;
+    switch (st.phase) {
+      case PHASE.WALKING:   nextPhase = PHASE.TRANS_IN;  nextDurSecs = st.transitionDuration; break;
+      case PHASE.TRANS_IN:  nextPhase = PHASE.RUNNING;   nextDurSecs = st.intervalLength;     break;
+      case PHASE.RUNNING:   nextPhase = PHASE.TRANS_OUT; nextDurSecs = st.transitionDuration; break;
+      case PHASE.TRANS_OUT: {
+        const nr = st.repsLeft - 1;
+        if (nr <= 0) {
+          return { state: { ...st, repsLeft: 0, isRunning: false, status: 'complete', timeLeft: 0 }, phaseEndMs: endMs };
+        }
+        st = { ...st, repsLeft: nr };
+        nextPhase = PHASE.WALKING; nextDurSecs = st.walkDuration;
+        break;
+      }
+      default:
+        return { state: st, phaseEndMs: endMs };
+    }
+    endMs += nextDurSecs * 1000;
+    st = { ...st, phase: nextPhase, timeLeft: nextDurSecs };
+  }
+  const remainMs = Math.max(0, endMs - nowMs);
+  st = { ...st, timeLeft: Math.ceil(remainMs / 1000) };
+  return { state: st, phaseEndMs: endMs };
+}
+
 const PHASE_COLOR = {
   [PHASE.WALKING]:   Colors.blue,
   [PHASE.TRANS_IN]:  Colors.amber,
@@ -42,6 +79,23 @@ const getExerciseName = (ex) => {
   if (ex.type === EXERCISE_TYPES.INTERVALS) return 'Intervals';
   if (ex.type === EXERCISE_TYPES.COMBO)     return ex.name || 'Combo';
   return ex.name === 'Other' ? (ex.customName || 'Exercise') : (ex.name || 'Exercise');
+};
+
+// Body part(s) shown on the second line of the exercise list — Warmup/Intervals
+// have no body part, Regular shows its single section, Combo shows the
+// deduplicated set of sections across its sub-exercises.
+const getExerciseBodyPart = (ex) => {
+  if (!ex) return '';
+  if (ex.type === EXERCISE_TYPES.REGULAR) {
+    return ex.bodySection === 'Other' ? (ex.customBodySection || 'Other') : (ex.bodySection || '');
+  }
+  if (ex.type === EXERCISE_TYPES.COMBO) {
+    const parts = [...new Set(
+      (ex.subExercises ?? []).map(s => s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection).filter(Boolean)
+    )];
+    return parts.join(' / ');
+  }
+  return '';
 };
 
 const getExerciseMeta = (ex, st) => {
@@ -312,8 +366,7 @@ export default function TrainingScreen({ navigation, route }) {
   // Rest timer
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
   const [restActive, setRestActive]   = useState(false);
-  const restSecRef                    = useRef(session?.restTimerSecs ?? 60);
-  useEffect(() => { restSecRef.current = restSec; }, [restSec]);
+  const restEndTimeRef                = useRef(null); // absolute ms timestamp rest is due to end
 
   // Animated glow for rest timer
   const restGlow = useRef(new Animated.Value(0)).current;
@@ -383,92 +436,120 @@ export default function TrainingScreen({ navigation, route }) {
 
   // ─── Session timer (always running) ─────────────────────────────────────
   useEffect(() => {
-    const id = setInterval(() => setElapsedSec(s => s + 1), 1000);
+    const tick = () => setElapsedSec(Math.floor((Date.now() - startTime.getTime()) / 1000));
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [startTime]);
 
   // ─── Rest timer ──────────────────────────────────────────────────────────
+  const restTick = useCallback(() => {
+    if (restEndTimeRef.current == null) return;
+    const remaining = Math.max(0, Math.round((restEndTimeRef.current - Date.now()) / 1000));
+    if (remaining <= 0) {
+      playRestBeep();
+      restEndTimeRef.current = null;
+      setRestSec(session?.restTimerSecs ?? 60);
+      setRestActive(false);
+    } else {
+      setRestSec(remaining);
+    }
+  }, [session]);
+
   useEffect(() => {
     if (!restActive) return;
-    const id = setInterval(() => {
-      if (restSecRef.current <= 1) {
-        playRestBeep();
-        setRestSec(session?.restTimerSecs ?? 60);
-        setRestActive(false);
-      } else {
-        setRestSec(s => s - 1);
-      }
-    }, 1000);
+    restTick();
+    const id = setInterval(restTick, 1000);
     return () => clearInterval(id);
   }, [restActive]);
 
   // ─── Warmup timer ────────────────────────────────────────────────────────
   const warmupEx = useMemo(() => session?.exercises?.find(e => e.type === EXERCISE_TYPES.WARMUP), [session]);
   const warmupRef = useRef(null);
+  const warmupEndTimeRef = useRef(null); // absolute ms timestamp warmup is due to end
   useEffect(() => { if (warmupEx) warmupRef.current = exStates[warmupEx.id]; }, [exStates, warmupEx]);
+
+  const warmupTick = useCallback(() => {
+    const cur = warmupRef.current;
+    if (!cur?.isRunning || warmupEndTimeRef.current == null) return;
+    const remaining = Math.max(0, Math.round((warmupEndTimeRef.current - Date.now()) / 1000));
+    if (remaining <= 0) {
+      playRestBeep();
+      warmupEndTimeRef.current = null;
+      setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
+      addToPerfOrder(warmupEx.id);
+      setSelectedId(null);
+    } else {
+      setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: remaining } }));
+    }
+  }, [warmupEx]);
 
   useEffect(() => {
     if (!warmupEx) return;
     if (!exStates[warmupEx.id]?.isRunning) return;
-    const id = setInterval(() => {
-      const cur = warmupRef.current;
-      if (!cur?.isRunning) return;
-      if (cur.timeLeft <= 1) {
-        playRestBeep();
-        setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
-        addToPerfOrder(warmupEx.id);
-        setSelectedId(null);
-      } else {
-        setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: prev[warmupEx.id].timeLeft - 1 } }));
-      }
-    }, 1000);
+    warmupTick();
+    const id = setInterval(warmupTick, 1000);
     return () => clearInterval(id);
   }, [exStates[warmupEx?.id]?.isRunning]);
 
   // ─── Intervals timer ─────────────────────────────────────────────────────
   const intervalsEx = useMemo(() => session?.exercises?.find(e => e.type === EXERCISE_TYPES.INTERVALS), [session]);
   const intervalsRef = useRef(null);
+  const intervalsPhaseEndRef = useRef(null); // absolute ms timestamp current phase is due to end
   useEffect(() => { if (intervalsEx) intervalsRef.current = exStates[intervalsEx.id]; }, [exStates, intervalsEx]);
 
-  const advancePhase = useCallback((id) => {
-    playIntervalBeep();
-    setExStates(prev => {
-      const st = prev[id];
-      let next;
-      switch (st.phase) {
-        case PHASE.WALKING:   next = { ...st, phase: PHASE.TRANS_IN,  timeLeft: st.transitionDuration }; break;
-        case PHASE.TRANS_IN:  next = { ...st, phase: PHASE.RUNNING,   timeLeft: st.intervalLength };     break;
-        case PHASE.RUNNING:   next = { ...st, phase: PHASE.TRANS_OUT, timeLeft: st.transitionDuration }; break;
-        case PHASE.TRANS_OUT: {
-          const nr = st.repsLeft - 1;
-          if (nr <= 0) {
-            setTimeout(() => { addToPerfOrder(id); setSelectedId(null); }, 300);
-            next = { ...st, repsLeft: 0, isRunning: false, status: 'complete' };
-          } else {
-            next = { ...st, repsLeft: nr, phase: PHASE.WALKING, timeLeft: st.walkDuration };
-          }
-          break;
-        }
-        default: next = st;
+  const intervalsTick = useCallback(() => {
+    if (!intervalsEx || intervalsPhaseEndRef.current == null) return;
+    const cur = intervalsRef.current;
+    if (!cur?.isRunning) return;
+    const now = Date.now();
+
+    if (intervalsPhaseEndRef.current > now) {
+      // Still within the current phase — just update the visual countdown
+      const remaining = Math.ceil((intervalsPhaseEndRef.current - now) / 1000);
+      if (remaining !== cur.timeLeft) {
+        setExStates(prev => ({ ...prev, [intervalsEx.id]: { ...prev[intervalsEx.id], timeLeft: remaining } }));
       }
-      return { ...prev, [id]: next };
-    });
-  }, []);
+      return;
+    }
+
+    // Current phase (or several, if catching up from background) has elapsed
+    const prevPhase = cur.phase;
+    const prevReps  = cur.repsLeft;
+    const { state: nextSt, phaseEndMs } = fastForwardIntervals(cur, intervalsPhaseEndRef.current, now);
+    intervalsPhaseEndRef.current = nextSt.isRunning ? phaseEndMs : null;
+    setExStates(prev => ({ ...prev, [intervalsEx.id]: nextSt }));
+    // One beep per resync, regardless of how many phases were caught up at once
+    if (nextSt.phase !== prevPhase || nextSt.repsLeft !== prevReps) playIntervalBeep();
+    if (nextSt.status === 'complete') {
+      setTimeout(() => { addToPerfOrder(intervalsEx.id); setSelectedId(null); }, 300);
+    }
+  }, [intervalsEx]);
 
   useEffect(() => {
     if (!intervalsEx) return;
     if (!exStates[intervalsEx.id]?.isRunning) return;
-    const id = setInterval(() => {
-      const cur = intervalsRef.current;
-      if (!cur?.isRunning) return;
-      if (cur.timeLeft <= 1) {
-        advancePhase(intervalsEx.id);
-      } else {
-        setExStates(prev => ({ ...prev, [intervalsEx.id]: { ...prev[intervalsEx.id], timeLeft: prev[intervalsEx.id].timeLeft - 1 } }));
-      }
-    }, 1000);
+    const id = setInterval(intervalsTick, 1000);
     return () => clearInterval(id);
   }, [exStates[intervalsEx?.id]?.isRunning]);
+
+  // ─── Resync all timers immediately when returning from background ─────────
+  // Android suspends/throttles JS timers while the app isn't foregrounded, so
+  // setInterval ticks can be delayed or skipped entirely. Every timer above is
+  // anchored to an absolute target timestamp (Date.now()-based), so simply
+  // re-running each tick function here recomputes the correct value from real
+  // elapsed time — no drift, no missed beeps, no waiting up to a second for
+  // the next scheduled tick to catch the display up.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') return;
+      setElapsedSec(Math.floor((Date.now() - startTime.getTime()) / 1000));
+      restTick();
+      warmupTick();
+      intervalsTick();
+    });
+    return () => sub.remove();
+  }, [startTime, restTick, warmupTick, intervalsTick]);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const addToPerfOrder = useCallback((id) => {
@@ -476,7 +557,9 @@ export default function TrainingScreen({ navigation, route }) {
   }, []);
 
   const activateRest = useCallback(() => {
-    setRestSec(session?.restTimerSecs ?? 60);
+    const secs = session?.restTimerSecs ?? 60;
+    restEndTimeRef.current = Date.now() + secs * 1000;
+    setRestSec(secs);
     setRestActive(true);
   }, [session]);
 
@@ -635,6 +718,9 @@ export default function TrainingScreen({ navigation, route }) {
                   <StatusDot status={st?.status ?? 'pending'} />
                   <View style={styles.exInfo}>
                     <Text style={styles.exName}>{getExerciseName(item)}</Text>
+                    {getExerciseBodyPart(item) ? (
+                      <Text style={styles.exBodyPart}>{getExerciseBodyPart(item)}</Text>
+                    ) : null}
                     <Text style={styles.exMeta}>{getExerciseMeta(item, st)}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
@@ -662,9 +748,12 @@ export default function TrainingScreen({ navigation, route }) {
             )}
             {selectedEx.type === EXERCISE_TYPES.WARMUP && (
               <WarmupDetail exercise={selectedEx} state={selectedState}
-                onToggle={() => setExStates(prev => ({
-                  ...prev, [selectedId]: { ...prev[selectedId], isRunning: !prev[selectedId].isRunning }
-                }))}
+                onToggle={() => setExStates(prev => {
+                  const st = prev[selectedId];
+                  const starting = !st.isRunning;
+                  if (starting) warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
+                  return { ...prev, [selectedId]: { ...st, isRunning: starting } };
+                })}
                 onBack={() => goBack(selectedId)} />
             )}
             {selectedEx.type === EXERCISE_TYPES.INTERVALS && (
@@ -672,12 +761,15 @@ export default function TrainingScreen({ navigation, route }) {
                 onToggle={() => setExStates(prev => {
                   const st = prev[selectedId];
                   const starting = !st.isRunning && st.phase === null;
+                  const willRun = !st.isRunning;
                   if (starting) addToPerfOrder(selectedId);
+                  const newTimeLeft = starting ? st.walkDuration : st.timeLeft;
+                  if (willRun) intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
                   return { ...prev, [selectedId]: {
-                    ...st, isRunning: !st.isRunning,
+                    ...st, isRunning: willRun,
                     status:   starting ? 'partial'        : st.status,
                     phase:    starting ? PHASE.WALKING    : st.phase,
-                    timeLeft: starting ? st.walkDuration  : st.timeLeft,
+                    timeLeft: newTimeLeft,
                   }};
                 })}
                 onUpdateReps={v => setExStates(prev => ({
@@ -742,6 +834,7 @@ const styles = StyleSheet.create({
   exRowDone:   { borderColor: Colors.gold + '55' },
   exInfo:      { flex: 1 },
   exName:      { ...Typography.h3, color: Colors.textPrimary },
+  exBodyPart:  { ...Typography.bodySmall, color: Colors.amber, marginTop: 2 },
   exMeta:      { ...Typography.bodySmall, color: Colors.textSecondary, marginTop: 2 },
 
   // End session confirmation overlay
