@@ -36,53 +36,21 @@ const DEFAULT_TRANSFORMER = path.join(
 
 const defaultTransformer = require(DEFAULT_TRANSFORMER);
 
-// ─── TypeScript approach: replace import, keep rest of file ──────────────────
+// ─── Extract the real native component name ────────────────────────────────
+//
+// codegenNativeComponent('CodegenName', { paperComponentName: 'RealNative' })
+// registers the component under paperComponentName when present — NOT the
+// first string argument. Missing this caused RCTSafeAreaViewNativeComponent
+// (codegen name 'SafeAreaView', paperComponentName 'RCTSafeAreaView') to be
+// requested under the wrong name, silently failing and crashing LogBox.
+const CODEGEN_NAME_RE = /codegenNativeComponent(?:<[^>]+>)?\s*\(\s*\n?\s*['"]([^'"]+)['"]/;
+const PAPER_NAME_RE   = /paperComponentName\s*:\s*['"]([^'"]+)['"]/;
 
-const CODEGEN_IMPORT_RE =
-  /^[ \t]*import\s+(?:\{[^}]*\bcodegenNativeComponent\b[^}]*\}|codegenNativeComponent)\s+from\s+['"][^'"]+['"];?[ \t]*\r?\n?/gm;
-
-const TS_REPLACEMENT =
-  "/* kinetic: codegenNativeComponent → requireNativeComponent */\n" +
-  "var __rnc = require('react-native').requireNativeComponent;\n" +
-  "var codegenNativeComponent = function(name) {\n" +
-  "  try { return __rnc(name); } catch(e) { return {}; }\n" +
-  "};\n";
-
-function patchTypeScriptFile(src) {
-  const patched = src.replace(CODEGEN_IMPORT_RE, '');
-  if (patched === src) return null; // nothing replaced
-
-  // Insert after leading directive if present
-  const dir = /^(?:'use strict'|"use strict"|'use client'|"use client");?[ \t]*\r?\n/.exec(patched);
-  if (dir) {
-    return patched.slice(0, dir[0].length) + TS_REPLACEMENT + patched.slice(dir[0].length);
-  }
-  return TS_REPLACEMENT + patched;
-}
-
-// ─── Flow approach: replace entire file with minimal plain JS ─────────────────
-
-// Extract the native component name from codegenNativeComponent call:
-//   codegenNativeComponent<Type>('NativeName', ...)  or
-//   (codegenNativeComponent<Type>(\n  'NativeName', ...
-const NATIVE_NAME_RE = /codegenNativeComponent(?:<[^>]+>)?\s*\(\s*\n?\s*['"]([^'"]+)['"]/;
-
-function buildFlowReplacement(src) {
-  const m = src.match(NATIVE_NAME_RE);
-  const name = m ? m[1] : null;
-
-  if (name) {
-    return (
-      "'use strict';\n" +
-      "var __rnc = require('react-native').requireNativeComponent;\n" +
-      "var __NC;\n" +
-      "try { __NC = __rnc(" + JSON.stringify(name) + "); } catch(e) { __NC = {}; }\n" +
-      "module.exports = __NC;\n" +
-      "module.exports['default'] = __NC;\n"
-    );
-  }
-  // Fallback: no name found, return empty-ish module
-  return "'use strict';\nmodule.exports = {};\nmodule.exports['default'] = {};\n";
+function extractNativeName(src) {
+  const paperMatch  = src.match(PAPER_NAME_RE);
+  if (paperMatch) return paperMatch[1];
+  const codegenMatch = src.match(CODEGEN_NAME_RE);
+  return codegenMatch ? codegenMatch[1] : null;
 }
 
 // ─── Main transform hook ──────────────────────────────────────────────────────
@@ -103,8 +71,7 @@ module.exports.transform = function transform(params) {
   const { src, filename, options } = params;
 
   if (src && IMPORTS_CODEGEN_RE.test(src)) {
-    const nameMatch = src.match(NATIVE_NAME_RE);
-    const name = nameMatch ? nameMatch[1] : null;
+    const name = extractNativeName(src);
 
     const newSrc = name
       ? (
