@@ -9,8 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { loadSessions, saveSessions } from '../utils/storage';
 import { EXERCISE_TYPES } from '../data/exercises';
-// TEMP: sound testing button — remove after confirming audio works on device
-import { initAudio, loadSounds, playRestBeep, playIntervalBeep } from '../utils/sounds';
 
 // Derive unique body areas covered by a session's exercises
 const getBodyAreas = (exercises) => {
@@ -36,21 +34,6 @@ export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
-
-  // TEMP: sound testing — remove after confirming audio works on device
-  const [soundTestStatus, setSoundTestStatus] = useState('Tap to test sound');
-  const handleSoundTest = async () => {
-    try {
-      setSoundTestStatus('Loading...');
-      await initAudio();
-      await loadSounds();
-      setSoundTestStatus('Playing...');
-      await playRestBeep();
-      setTimeout(() => setSoundTestStatus('Tap to test sound'), 1500);
-    } catch (e) {
-      setSoundTestStatus('ERROR: ' + (e?.message ?? String(e)));
-    }
-  };
 
   useFocusEffect(
     useCallback(() => {
@@ -143,16 +126,6 @@ export default function SessionListScreen({ navigation }) {
           <Ionicons name="add" size={28} color={Colors.background} />
         </TouchableOpacity>
       </View>
-
-      {/* TEMP: sound testing button — remove after confirming audio works on device */}
-      <TouchableOpacity
-        style={soundTestStyles.btn}
-        onPress={handleSoundTest}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="volume-high-outline" size={20} color={Colors.background} />
-        <Text style={soundTestStyles.txt}>{soundTestStatus}</Text>
-      </TouchableOpacity>
 
       {sessions.length === 0 ? (
         <View style={styles.emptyState}>
@@ -376,14 +349,4 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.danger, alignItems: 'center', justifyContent: 'center',
   },
   confirmDeleteTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
-});
-
-// TEMP: sound testing — remove this whole StyleSheet after confirming audio works
-const soundTestStyles = StyleSheet.create({
-  btn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: Spacing.sm, backgroundColor: Colors.blue, marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.md, paddingVertical: Spacing.sm, borderRadius: Radius.md,
-  },
-  txt: { ...Typography.label, color: Colors.background, textTransform: 'none', fontSize: 14 },
 });

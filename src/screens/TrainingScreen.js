@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { formatTime } from '../utils/time';
-import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep } from '../utils/sounds';
+import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { EXERCISE_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
@@ -414,7 +414,7 @@ export default function TrainingScreen({ navigation, route }) {
       const cur = warmupRef.current;
       if (!cur?.isRunning) return;
       if (cur.timeLeft <= 1) {
-        playIntervalBeep();
+        playRestBeep();
         setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
         addToPerfOrder(warmupEx.id);
         setSelectedId(null);
@@ -523,6 +523,7 @@ export default function TrainingScreen({ navigation, route }) {
       }),
     };
 
+    playCompleteSound();
     navigatingAway.current = true;
     navigation.replace('Summary', { summary });
   }, [elapsedSec, perfOrder, session, startTime, navigation]);
