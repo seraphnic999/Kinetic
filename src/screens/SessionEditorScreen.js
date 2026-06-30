@@ -494,7 +494,7 @@ export default function SessionEditorScreen({ navigation, route }) {
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + Spacing.xl }]}
         keyboardShouldPersistTaps="handled"
       >
 

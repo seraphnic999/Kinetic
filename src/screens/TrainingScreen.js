@@ -133,8 +133,15 @@ function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
       <Text style={d.name}>🔗 {exercise.name || 'Combo'}</Text>
 
       <View style={d.stepperRow}>
-        <Stepper size="large" label="SETS LEFT" value={state.setsLeft} min={0} max={99}
-          onChange={v => onUpdate({ setsLeft: v })} />
+        <Stepper
+          size="large"
+          label="SETS LEFT"
+          value={state.setsLeft}
+          min={0}
+          max={99}
+          onChange={v => onUpdate({ setsLeft: v })}
+          containerStyle={{ flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' }}
+        />
       </View>
 
       <View>
@@ -266,7 +273,7 @@ const d = StyleSheet.create({
   container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
   name:      { ...Typography.h1, color: Colors.textPrimary },
   subtitle:  { ...Typography.body, color: Colors.textSecondary, marginTop: -Spacing.sm },
-  stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md },
+  stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md, justifyContent: 'center' },
   actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.sm, ...Shadows.orange },
@@ -611,7 +618,7 @@ export default function TrainingScreen({ navigation, route }) {
             data={session?.exercises ?? []}
             keyExtractor={item => item.id}
             style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xl }]}
             renderItem={({ item }) => {
               const st = exStates[item.id];
               return (
@@ -632,7 +639,10 @@ export default function TrainingScreen({ navigation, route }) {
           />
         ) : (
           /* Exercise detail */
-          <ScrollView style={{ flex: 1, minHeight: 0 }} contentContainerStyle={{ flexGrow: 1 }}>
+          <ScrollView
+            style={{ flex: 1, minHeight: 0 }}
+            contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + Spacing.lg }}
+          >
             {selectedEx.type === EXERCISE_TYPES.REGULAR && (
               <RegularDetail exercise={selectedEx} state={selectedState}
                 onUpdate={p => setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...p } }))}

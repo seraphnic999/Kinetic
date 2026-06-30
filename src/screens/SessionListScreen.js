@@ -147,7 +147,7 @@ export default function SessionListScreen({ navigation }) {
           data={sessions}
           keyExtractor={item => item.id}
           renderItem={renderSession}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + Spacing.xl }]}
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}
         />
