@@ -9,13 +9,19 @@ import { Colors, Typography, Spacing, Radius } from '../theme';
  *
  * fillRow=true  (default): stepper shares equal width with sibling steppers
  *                          in a flex row (e.g. WEIGHT / SETS / REPS, 3-across)
- * fillRow=false           : stepper sizes itself to its own content — use this
+ * fillRow=false           : stepper uses a fixed, explicit pixel width sized
+ *                          to comfortably fit its own content — use this
  *                          whenever the stepper is NOT sitting next to sibling
  *                          steppers dividing up a known row width (e.g. a lone
- *                          centered "REPS REMAINING" or "SETS LEFT" control)
+ *                          centered "REPS REMAINING" or "SETS LEFT" control).
+ *                          An explicit width (rather than flexBasis:'auto')
+ *                          is used deliberately: nested alignSelf:'stretch'
+ *                          content-measurement proved unreliable in practice
+ *                          across this app's actual layout contexts, so we
+ *                          sidestep it entirely with a known-good fixed value.
  *
  * IMPORTANT: the flex sizing is expressed ONLY via the longhand properties
- * (flexGrow/flexShrink/flexBasis) below — never mixed with the `flex`
+ * (flexGrow/flexShrink/flexBasis/width) below — never mixed with the `flex`
  * shorthand on a competing style object. React Native merges style arrays by
  * shallow key assignment, so `flex: 1` in one object and `flexGrow: 0` in
  * another can BOTH end up in the flattened style simultaneously since they
@@ -27,9 +33,12 @@ export function Stepper({
   size = 'normal', readOnly = false, fillRow = true, containerStyle,
 }) {
   const L = size === 'large';
+  // Standalone width = 2 buttons + a comfortable input width, with margin
+  // to spare above the hard minimum so nothing ever clips.
+  const standaloneWidth = L ? 150 : 130;
   const flexStyle = fillRow
     ? { flexGrow: 1, flexShrink: 1, flexBasis: 0 }
-    : { flexGrow: 0, flexShrink: 0, flexBasis: 'auto', alignSelf: 'center' };
+    : { width: standaloneWidth, alignSelf: 'center' };
 
   return (
     <View style={[styles.container, flexStyle, containerStyle]}>
