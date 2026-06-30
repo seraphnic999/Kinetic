@@ -101,11 +101,14 @@ function RegularDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
       <Text style={d.name}>{getExerciseName(exercise)}</Text>
       {exercise.bodySection ? <Text style={d.subtitle}>{exercise.bodySection}</Text> : null}
 
+      <View style={d.heroStepperRow}>
+        <Stepper size="large" label="SETS LEFT" value={state.setsLeft} min={0} max={99}
+          onChange={v => onUpdate({ setsLeft: v })} fillRow={false} />
+      </View>
+
       <View style={d.stepperRow}>
         <Stepper size="large" label="WEIGHT (kg)" value={state.weight} min={0} max={500}
           onChange={v => onUpdate({ weight: v })} />
-        <Stepper size="large" label="SETS LEFT" value={state.setsLeft} min={0} max={99}
-          onChange={v => onUpdate({ setsLeft: v })} />
         <Stepper size="large" label="REPS" value={state.reps} min={1} max={999}
           onChange={v => onUpdate({ reps: v })} />
       </View>
@@ -273,6 +276,7 @@ const d = StyleSheet.create({
   container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
   name:      { ...Typography.h1, color: Colors.textPrimary },
   subtitle:  { ...Typography.body, color: Colors.textSecondary, marginTop: -Spacing.sm },
+  heroStepperRow:{ flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg },
   stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md, justifyContent: 'center' },
   actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
