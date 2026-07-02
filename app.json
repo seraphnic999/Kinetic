@@ -34,6 +34,12 @@
         {
           "recordAudioAndroid": false
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": ["assets/beep_rest.wav", "assets/beep_interval.wav", "assets/beep_complete.wav"]
+        }
       ]
     ]
   }

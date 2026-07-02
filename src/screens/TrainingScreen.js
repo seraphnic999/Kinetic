@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { formatTime } from '../utils/time';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
+import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { EXERCISE_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
@@ -363,6 +364,11 @@ export default function TrainingScreen({ navigation, route }) {
   // End confirmation
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
+  // Scheduled notification IDs — cancelled when timer completes in-app
+  const restNotifRef      = useRef(null);
+  const warmupNotifRef    = useRef(null);
+  const intervalsNotifRef = useRef(null);
+
   // Rest timer
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
   const [restActive, setRestActive]   = useState(false);
@@ -428,10 +434,14 @@ export default function TrainingScreen({ navigation, route }) {
     return unsub;
   }, [navigation]);
 
-  // ─── Sounds ─────────────────────────────────────────────────────────────
+  // ─── Sounds + notification permissions ──────────────────────────────────
   useEffect(() => {
     initAudio().then(() => loadSounds());
-    return () => { unloadSounds(); };
+    requestNotificationPermissions();
+    return () => {
+      unloadSounds();
+      cancelAllTimerNotifications();
+    };
   }, []);
 
   // ─── Session timer (always running) ─────────────────────────────────────
@@ -447,6 +457,7 @@ export default function TrainingScreen({ navigation, route }) {
     if (restEndTimeRef.current == null) return;
     const remaining = Math.max(0, Math.round((restEndTimeRef.current - Date.now()) / 1000));
     if (remaining <= 0) {
+      cancelTimerNotification(restNotifRef.current); restNotifRef.current = null;
       playRestBeep();
       restEndTimeRef.current = null;
       setRestSec(session?.restTimerSecs ?? 60);
@@ -474,6 +485,7 @@ export default function TrainingScreen({ navigation, route }) {
     if (!cur?.isRunning || warmupEndTimeRef.current == null) return;
     const remaining = Math.max(0, Math.round((warmupEndTimeRef.current - Date.now()) / 1000));
     if (remaining <= 0) {
+      cancelTimerNotification(warmupNotifRef.current); warmupNotifRef.current = null;
       playRestBeep();
       warmupEndTimeRef.current = null;
       setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
@@ -522,7 +534,15 @@ export default function TrainingScreen({ navigation, route }) {
     // One beep per resync, regardless of how many phases were caught up at once
     if (nextSt.phase !== prevPhase || nextSt.repsLeft !== prevReps) playIntervalBeep();
     if (nextSt.status === 'complete') {
+      cancelTimerNotification(intervalsNotifRef.current); intervalsNotifRef.current = null;
       setTimeout(() => { addToPerfOrder(intervalsEx.id); setSelectedId(null); }, 300);
+    } else if (nextSt.isRunning && phaseEndMs) {
+      // Reschedule notification for the new phase end
+      cancelTimerNotification(intervalsNotifRef.current);
+      const secsUntilNextPhase = Math.ceil((phaseEndMs - now) / 1000);
+      const phaseLabel = nextSt.phase === PHASE.RUNNING ? 'Stop running!' : nextSt.phase === PHASE.WALKING ? 'Start walking' : 'Transition!';
+      scheduleTimerNotification(secsUntilNextPhase, `Intervals — ${phaseLabel} 🏃`, 'beep_interval.wav')
+        .then(id => { intervalsNotifRef.current = id; });
     }
   }, [intervalsEx]);
 
@@ -561,6 +581,8 @@ export default function TrainingScreen({ navigation, route }) {
     restEndTimeRef.current = Date.now() + secs * 1000;
     setRestSec(secs);
     setRestActive(true);
+    scheduleTimerNotification(secs, 'Rest over — time to lift! 💪', 'beep_rest.wav')
+      .then(id => { restNotifRef.current = id; });
   }, [session]);
 
   // ─── Auto-complete check ─────────────────────────────────────────────────
@@ -607,6 +629,7 @@ export default function TrainingScreen({ navigation, route }) {
     };
 
     playCompleteSound();
+    cancelAllTimerNotifications();
     navigatingAway.current = true;
     navigation.replace('Summary', { summary });
   }, [elapsedSec, perfOrder, session, startTime, navigation]);
@@ -751,7 +774,14 @@ export default function TrainingScreen({ navigation, route }) {
                 onToggle={() => setExStates(prev => {
                   const st = prev[selectedId];
                   const starting = !st.isRunning;
-                  if (starting) warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
+                  if (starting) {
+                    warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
+                    scheduleTimerNotification(st.timeLeft, 'Warmup complete — session started! 🔥', 'beep_rest.wav')
+                      .then(id => { warmupNotifRef.current = id; });
+                  } else {
+                    cancelTimerNotification(warmupNotifRef.current);
+                    warmupNotifRef.current = null;
+                  }
                   return { ...prev, [selectedId]: { ...st, isRunning: starting } };
                 })}
                 onBack={() => goBack(selectedId)} />
@@ -764,7 +794,14 @@ export default function TrainingScreen({ navigation, route }) {
                   const willRun = !st.isRunning;
                   if (starting) addToPerfOrder(selectedId);
                   const newTimeLeft = starting ? st.walkDuration : st.timeLeft;
-                  if (willRun) intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
+                  if (willRun) {
+                    intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
+                    scheduleTimerNotification(newTimeLeft, 'Intervals — Start running! 🏃', 'beep_interval.wav')
+                      .then(id => { intervalsNotifRef.current = id; });
+                  } else {
+                    cancelTimerNotification(intervalsNotifRef.current);
+                    intervalsNotifRef.current = null;
+                  }
                   return { ...prev, [selectedId]: {
                     ...st, isRunning: willRun,
                     status:   starting ? 'partial'        : st.status,
