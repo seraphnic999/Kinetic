@@ -11,6 +11,7 @@ import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../t
 import { formatTime } from '../utils/time';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
+import { syncWorkout } from '../utils/syncWorkout';
 import { EXERCISE_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
@@ -630,6 +631,7 @@ export default function TrainingScreen({ navigation, route }) {
 
     playCompleteSound();
     cancelAllTimerNotifications();
+    syncWorkout(summary); // fire-and-forget — won't block navigation or throw
     navigatingAway.current = true;
     navigation.replace('Summary', { summary });
   }, [elapsedSec, perfOrder, session, startTime, navigation]);

@@ -118,13 +118,22 @@ export default function SessionListScreen({ navigation }) {
           <Text style={styles.headerTitle}>Kinetic</Text>
           <Text style={styles.headerSubtitle}>Your training sessions</Text>
         </View>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => navigation.navigate('SessionEditor', { session: null })}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={28} color={Colors.background} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
+            onPress={() => navigation.navigate('Dashboard')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addBtn}
+            onPress={() => navigation.navigate('SessionEditor', { session: null })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="add" size={28} color={Colors.background} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {sessions.length === 0 ? (

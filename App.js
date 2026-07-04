@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useCallback } from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet } from 'react-native';
+import { Platform, View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
@@ -9,12 +9,15 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 
 import { Colors } from './src/theme';
+import { useAuth } from './src/hooks/useAuth';
+import LoginScreen         from './src/screens/LoginScreen';
 import SessionListScreen   from './src/screens/SessionListScreen';
 import SessionEditorScreen from './src/screens/SessionEditorScreen';
 import TrainingScreen      from './src/screens/TrainingScreen';
 import SummaryScreen       from './src/screens/SummaryScreen';
+import DashboardScreen     from './src/screens/DashboardScreen';
 
-// ── Error boundary — catches rendering crashes ────────────────────────────────
+// ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   state = { error: null };
   static getDerivedStateFromError(e) { return { error: e }; }
@@ -49,7 +52,7 @@ const cs = StyleSheet.create({
   stack:  { color: '#888', fontSize: 11, fontFamily: 'monospace', lineHeight: 18 },
 });
 
-// Inject web-only CSS: prevent page scroll and register the DSEG7 font
+// Inject web-only CSS
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `
@@ -58,8 +61,7 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
       font-family: 'DSEG7Classic';
       src: url('https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.woff2') format('woff2'),
            url('https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.ttf') format('truetype');
-      font-weight: normal;
-      font-style: normal;
+      font-weight: normal; font-style: normal;
     }
   `;
   document.head.appendChild(style);
@@ -67,41 +69,58 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 
 const Stack = createStackNavigator();
 
+function AppNavigator() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={Colors.primary} size="large" />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <Stack.Navigator
+      initialRouteName="SessionList"
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: Colors.background, flex: 1 },
+        animation: 'slide_from_right',
+      }}
+    >
+      <Stack.Screen name="SessionList"   component={SessionListScreen} />
+      <Stack.Screen name="SessionEditor" component={SessionEditorScreen} />
+      <Stack.Screen name="Training"      component={TrainingScreen} />
+      <Stack.Screen name="Summary"       component={SummaryScreen} />
+      <Stack.Screen name="Dashboard"     component={DashboardScreen} />
+    </Stack.Navigator>
+  );
+}
+
 export default function App() {
-  // Load DSEG7 font for native (web uses CSS injection above)
   const [fontsLoaded] = useFonts(
     Platform.OS !== 'web'
       ? { 'DSEG7Classic': 'https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.ttf' }
       : {}
   );
 
-  // On native wait for fonts; on web the CSS @font-face handles it
-  if (Platform.OS !== 'web' && !fontsLoaded) {
-    return null;
-  }
+  if (Platform.OS !== 'web' && !fontsLoaded) return null;
 
   return (
     <ErrorBoundary>
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider style={{ flex: 1 }}>
-        <NavigationContainer>
-          <StatusBar style="light" backgroundColor={Colors.background} />
-          <Stack.Navigator
-            initialRouteName="SessionList"
-            screenOptions={{
-              headerShown: false,
-              cardStyle: { backgroundColor: Colors.background, flex: 1 },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="SessionList"   component={SessionListScreen} />
-            <Stack.Screen name="SessionEditor" component={SessionEditorScreen} />
-            <Stack.Screen name="Training"      component={TrainingScreen} />
-            <Stack.Screen name="Summary"       component={SummaryScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider style={{ flex: 1 }}>
+          <NavigationContainer>
+            <StatusBar style="light" backgroundColor={Colors.background} />
+            <AppNavigator />
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     </ErrorBoundary>
   );
 }
