@@ -325,10 +325,21 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
         <Text style={[iv.timer, { color: pColor }]}>
           {notStart ? formatTime(state.walkDuration ?? 60) : formatTime(state.timeLeft)}
         </Text>
-        {/* Total remaining countdown */}
+        {/* Total remaining countdown + progress bar */}
         <Text style={iv.totalTimer}>
           Total remaining: {formatTime(notStart ? totalTime : totalRemaining)}
         </Text>
+        <View style={iv.progressTrack}>
+          <View
+            style={[
+              iv.progressFill,
+              {
+                width: `${notStart ? 0 : Math.min(100, (totalElapsed / totalTime) * 100)}%`,
+                backgroundColor: pColor,
+              },
+            ]}
+          />
+        </View>
       </View>
 
       {!done &&
@@ -348,12 +359,17 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
   );
 }
 const iv = StyleSheet.create({
-  repsRow:    { alignItems: 'center', marginBottom: Spacing.xl },
-  repsLabel:  { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  phaseBox:   { alignItems: 'center', borderWidth: 2, borderRadius: Radius.lg, padding: Spacing.xl, marginBottom: Spacing.xl },
-  phaseLabel: { ...Typography.h2, marginBottom: Spacing.sm },
-  timer:      { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
-  totalTimer: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: Spacing.sm, letterSpacing: 0.5 },
+  repsRow:       { alignItems: 'center', marginBottom: Spacing.xl },
+  repsLabel:     { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  phaseBox:      { alignItems: 'center', borderWidth: 2, borderRadius: Radius.lg, padding: Spacing.xl, marginBottom: Spacing.xl },
+  phaseLabel:    { ...Typography.h2, marginBottom: Spacing.sm },
+  timer:         { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
+  totalTimer:    { ...Typography.bodySmall, color: Colors.textMuted, marginTop: Spacing.sm, letterSpacing: 0.5 },
+  progressTrack: {
+    alignSelf: 'stretch', height: 6, backgroundColor: Colors.surfaceRaised,
+    borderRadius: 3, marginTop: Spacing.sm, overflow: 'hidden',
+  },
+  progressFill:  { height: '100%', borderRadius: 3 },
 });
 
 // ─── Shared detail styles ─────────────────────────────────────────────────────
