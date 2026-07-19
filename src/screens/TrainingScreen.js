@@ -281,6 +281,8 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
   const pColor   = state.phase ? PHASE_COLOR[state.phase] : Colors.textMuted;
   const pLabel   = state.phase ? PHASE_LABEL[state.phase] : 'READY';
 
+  const [trackW, setTrackW] = useState(0);   // measured pixel width of the progress track
+
   // ── Total interval time countdown ─────────────────────────────────────────
   const cycleTime = (state.walkDuration ?? 60) + (state.intervalLength ?? 45) + 2 * (state.transitionDuration ?? 10);
   const totalTime = (state.reps ?? 8) * cycleTime;
@@ -300,9 +302,10 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
     }
     return elapsed;
   })();
-  const completedReps   = (state.reps ?? 8) - (state.repsLeft ?? state.reps ?? 8);
-  const totalElapsed    = completedReps * cycleTime + currentRepElapsed;
-  const totalRemaining  = Math.max(0, totalTime - totalElapsed);
+  const completedReps  = (state.reps ?? 8) - (state.repsLeft ?? state.reps ?? 8);
+  const totalElapsed   = completedReps * cycleTime + currentRepElapsed;
+  const totalRemaining = Math.max(0, totalTime - totalElapsed);
+  const progress       = notStart ? 0 : Math.min(1, totalElapsed / Math.max(totalTime, 1));
 
   return (
     <View style={d.container}>
@@ -325,18 +328,21 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
         <Text style={[iv.timer, { color: pColor }]}>
           {notStart ? formatTime(state.walkDuration ?? 60) : formatTime(state.timeLeft)}
         </Text>
-        {/* Total remaining countdown + progress bar */}
+
+        {/* Total countdown */}
         <Text style={iv.totalTimer}>
           Total remaining: {formatTime(notStart ? totalTime : totalRemaining)}
         </Text>
-        <View style={iv.progressTrack}>
+
+        {/* Progress bar — onLayout gives us the real pixel width so fill is reliable */}
+        <View
+          style={iv.progressTrack}
+          onLayout={e => setTrackW(e.nativeEvent.layout.width)}
+        >
           <View
             style={[
               iv.progressFill,
-              {
-                width: `${notStart ? 0 : Math.min(100, (totalElapsed / totalTime) * 100)}%`,
-                backgroundColor: pColor,
-              },
+              { width: trackW * progress, backgroundColor: pColor },
             ]}
           />
         </View>
@@ -366,10 +372,14 @@ const iv = StyleSheet.create({
   timer:         { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
   totalTimer:    { ...Typography.bodySmall, color: Colors.textMuted, marginTop: Spacing.sm, letterSpacing: 0.5 },
   progressTrack: {
-    alignSelf: 'stretch', height: 6, backgroundColor: Colors.surfaceRaised,
-    borderRadius: 3, marginTop: Spacing.sm, overflow: 'hidden',
+    alignSelf: 'stretch',
+    height: 8,
+    backgroundColor: Colors.surfaceRaised,
+    borderRadius: 4,
+    marginTop: Spacing.md,
+    overflow: 'hidden',
   },
-  progressFill:  { height: '100%', borderRadius: 3 },
+  progressFill: { height: '100%', borderRadius: 4 },
 });
 
 // ─── Shared detail styles ─────────────────────────────────────────────────────
