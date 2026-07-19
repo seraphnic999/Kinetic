@@ -24,6 +24,7 @@ export async function syncWorkout(summary) {
         started_at:      startedAt,
         duration_secs:   summary.totalDurationSecs ?? 0,
         rest_timer_secs: summary.restTimerSecs ?? null,
+        timeline:        summary.timeline ?? null,
       })
       .select('id')
       .single();

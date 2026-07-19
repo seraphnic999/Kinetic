@@ -12,6 +12,7 @@ import { formatTime } from '../utils/time';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { syncWorkout } from '../utils/syncWorkout';
+import { generateId } from '../utils/storage';
 import { EXERCISE_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
@@ -280,6 +281,29 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
   const pColor   = state.phase ? PHASE_COLOR[state.phase] : Colors.textMuted;
   const pLabel   = state.phase ? PHASE_LABEL[state.phase] : 'READY';
 
+  // ── Total interval time countdown ─────────────────────────────────────────
+  const cycleTime = (state.walkDuration ?? 60) + (state.intervalLength ?? 45) + 2 * (state.transitionDuration ?? 10);
+  const totalTime = (state.reps ?? 8) * cycleTime;
+
+  const currentRepElapsed = (() => {
+    if (!state.phase) return 0;
+    const dur = {
+      [PHASE.WALKING]:   state.walkDuration   ?? 60,
+      [PHASE.TRANS_IN]:  state.transitionDuration ?? 10,
+      [PHASE.RUNNING]:   state.intervalLength  ?? 45,
+      [PHASE.TRANS_OUT]: state.transitionDuration ?? 10,
+    };
+    let elapsed = 0;
+    for (const ph of [PHASE.WALKING, PHASE.TRANS_IN, PHASE.RUNNING, PHASE.TRANS_OUT]) {
+      if (ph === state.phase) { elapsed += dur[ph] - (state.timeLeft ?? 0); break; }
+      elapsed += dur[ph];
+    }
+    return elapsed;
+  })();
+  const completedReps   = (state.reps ?? 8) - (state.repsLeft ?? state.reps ?? 8);
+  const totalElapsed    = completedReps * cycleTime + currentRepElapsed;
+  const totalRemaining  = Math.max(0, totalTime - totalElapsed);
+
   return (
     <View style={d.container}>
       <Text style={d.name}>⚡ Intervals</Text>
@@ -301,6 +325,10 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
         <Text style={[iv.timer, { color: pColor }]}>
           {notStart ? formatTime(state.walkDuration ?? 60) : formatTime(state.timeLeft)}
         </Text>
+        {/* Total remaining countdown */}
+        <Text style={iv.totalTimer}>
+          Total remaining: {formatTime(notStart ? totalTime : totalRemaining)}
+        </Text>
       </View>
 
       {!done &&
@@ -320,11 +348,12 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
   );
 }
 const iv = StyleSheet.create({
-  repsRow:   { alignItems: 'center', marginBottom: Spacing.xl },
-  repsLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
-  phaseBox:  { alignItems: 'center', borderWidth: 2, borderRadius: Radius.lg, padding: Spacing.xl, marginBottom: Spacing.xl },
-  phaseLabel:{ ...Typography.h2, marginBottom: Spacing.sm },
-  timer:     { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
+  repsRow:    { alignItems: 'center', marginBottom: Spacing.xl },
+  repsLabel:  { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  phaseBox:   { alignItems: 'center', borderWidth: 2, borderRadius: Radius.lg, padding: Spacing.xl, marginBottom: Spacing.xl },
+  phaseLabel: { ...Typography.h2, marginBottom: Spacing.sm },
+  timer:      { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
+  totalTimer: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: Spacing.sm, letterSpacing: 0.5 },
 });
 
 // ─── Shared detail styles ─────────────────────────────────────────────────────
@@ -351,11 +380,227 @@ const d = StyleSheet.create({
   subSection:{ ...Typography.bodySmall, color: Colors.amber },
 });
 
+// ─── Quick Add Modal (ad-hoc mode) ───────────────────────────────────────────
+// Simplified exercise builder for adding exercises during an ad-hoc session.
+function QuickAddModal({ exercises, onAdd, onClose }) {
+  const [step, setStep]     = useState('type');  // 'type' | 'form'
+  const [type, setType]     = useState(null);
+  const insets              = useSafeAreaInsets();
+
+  // Form state per type
+  const [warmupType, setWarmupType]   = useState('Treadmill');
+  const [warmupDur, setWarmupDur]     = useState(180);
+  const [bodySection, setBodySection] = useState('');
+  const [exName, setExName]           = useState('');
+  const [weight, setWeight]           = useState(0);
+  const [sets, setSets]               = useState(3);
+  const [reps, setReps]               = useState(10);
+  const [ivReps, setIvReps]           = useState(8);
+  const [ivRun, setIvRun]             = useState(45);
+  const [ivWalk, setIvWalk]           = useState(60);
+  const [ivTrans, setIvTrans]         = useState(10);
+
+  const hasWarmup = exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
+  const hasExercises = exercises.length > 0;
+
+  const typeOptions = [
+    !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'flame-outline', label: 'Warmup', color: Colors.amber },
+    { key: EXERCISE_TYPES.REGULAR, icon: 'barbell-outline', label: 'Exercise', color: Colors.primary },
+    { key: EXERCISE_TYPES.COMBO,   icon: 'git-merge-outline', label: 'Combo', color: Colors.blue },
+    { key: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',  label: 'Intervals', color: Colors.gold },
+  ].filter(Boolean);
+
+  const selectType = (t) => { setType(t); setStep('form'); };
+
+  const confirm = () => {
+    const id = generateId();
+    if (type === EXERCISE_TYPES.WARMUP)
+      return onAdd({ id, type, warmupType, duration: warmupDur });
+    if (type === EXERCISE_TYPES.REGULAR)
+      return onAdd({ id, type, bodySection, name: exName, weight, sets, reps });
+    if (type === EXERCISE_TYPES.COMBO)
+      return onAdd({ id, type, name: 'Combo', sets,
+        subExercises: [
+          { id: generateId(), bodySection, name: exName },
+          { id: generateId(), bodySection: '', name: '' },
+        ] });
+    if (type === EXERCISE_TYPES.INTERVALS)
+      return onAdd({ id, type, reps: ivReps, intervalLength: ivRun, walkDuration: ivWalk, transitionDuration: ivTrans });
+  };
+
+  return (
+    <View style={qam.overlay}>
+      <View style={[qam.sheet, { paddingBottom: insets.bottom + Spacing.lg }]}>
+        {/* Header */}
+        <View style={qam.header}>
+          <TouchableOpacity onPress={step === 'form' ? () => setStep('type') : onClose} style={qam.backBtn}>
+            <Ionicons name={step === 'form' ? 'chevron-back' : 'close'} size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={qam.title}>{step === 'type' ? 'Add Exercise' : type}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: Spacing.md, padding: Spacing.lg }}>
+          {/* ── Step 1: Type picker ── */}
+          {step === 'type' && typeOptions.map(opt => (
+            <TouchableOpacity key={opt.key} style={[qam.typeCard, { borderColor: opt.color + '55' }]}
+              onPress={() => selectType(opt.key)} activeOpacity={0.8}>
+              <Ionicons name={opt.icon} size={28} color={opt.color} />
+              <Text style={[qam.typeLabel, { color: opt.color }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+
+          {/* ── Step 2: Forms ── */}
+          {step === 'form' && type === EXERCISE_TYPES.WARMUP && (
+            <>
+              <Text style={qam.fieldLabel}>Warmup Type</Text>
+              <View style={qam.chipRow}>
+                {WARMUP_TYPES.map(t => (
+                  <TouchableOpacity key={t} style={[qam.chip, warmupType === t && qam.chipActive]}
+                    onPress={() => setWarmupType(t)}>
+                    <Text style={[qam.chipTxt, warmupType === t && qam.chipActiveTxt]}>{t}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={qam.fieldLabel}>Duration (seconds)</Text>
+              <View style={qam.stepperRow}>
+                <Stepper value={warmupDur} onChange={setWarmupDur} min={10} max={3600} label="Seconds" />
+                <Text style={qam.timerHint}>{formatTime(warmupDur)}</Text>
+              </View>
+            </>
+          )}
+
+          {step === 'form' && type === EXERCISE_TYPES.REGULAR && (
+            <>
+              <Text style={qam.fieldLabel}>Body Section</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={qam.chipRow}>
+                  {BODY_SECTIONS.map(s => (
+                    <TouchableOpacity key={s} style={[qam.chip, bodySection === s && qam.chipActive]}
+                      onPress={() => { setBodySection(s); setExName(''); }}>
+                      <Text style={[qam.chipTxt, bodySection === s && qam.chipActiveTxt]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              {bodySection ? (
+                <>
+                  <Text style={qam.fieldLabel}>Exercise</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={qam.chipRow}>
+                      {(EXERCISES_BY_SECTION[bodySection] ?? []).map(n => (
+                        <TouchableOpacity key={n} style={[qam.chip, exName === n && qam.chipActive]}
+                          onPress={() => setExName(n)}>
+                          <Text style={[qam.chipTxt, exName === n && qam.chipActiveTxt]}>{n}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </>
+              ) : null}
+              <View style={qam.stepperRow}>
+                <Stepper value={weight} onChange={setWeight} min={0} max={500} label="Weight (kg)" />
+                <Stepper value={sets}   onChange={setSets}   min={1} max={99}  label="Sets" />
+                <Stepper value={reps}   onChange={setReps}   min={1} max={999} label="Reps" />
+              </View>
+            </>
+          )}
+
+          {step === 'form' && type === EXERCISE_TYPES.COMBO && (
+            <>
+              <Text style={qam.fieldLabel}>Body Section (for first sub-exercise)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={qam.chipRow}>
+                  {BODY_SECTIONS.map(s => (
+                    <TouchableOpacity key={s} style={[qam.chip, bodySection === s && qam.chipActive]}
+                      onPress={() => setBodySection(s)}>
+                      <Text style={[qam.chipTxt, bodySection === s && qam.chipActiveTxt]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+              <Text style={qam.helpTxt}>You can edit sub-exercise details in the training view after adding.</Text>
+              <View style={qam.stepperRow}>
+                <Stepper value={sets} onChange={setSets} min={1} max={99} label="Sets" />
+              </View>
+            </>
+          )}
+
+          {step === 'form' && type === EXERCISE_TYPES.INTERVALS && (
+            <>
+              <View style={qam.stepperRow}>
+                <Stepper value={ivReps}  onChange={setIvReps}  min={1} max={99}  label="Reps" />
+                <Stepper value={ivRun}   onChange={setIvRun}   min={5} max={600} label="Run (sec)" />
+              </View>
+              <View style={qam.stepperRow}>
+                <Stepper value={ivWalk}  onChange={setIvWalk}  min={5} max={600} label="Walk (sec)" />
+                <Stepper value={ivTrans} onChange={setIvTrans} min={0} max={60}  label="Trans. (sec)" />
+              </View>
+            </>
+          )}
+
+          {step === 'form' && (
+            <TouchableOpacity
+              style={[qam.confirmBtn, (!exName && type === EXERCISE_TYPES.REGULAR) && { opacity: 0.4 }]}
+              onPress={confirm}
+              activeOpacity={0.8}
+              disabled={type === EXERCISE_TYPES.REGULAR && !exName}
+            >
+              <Ionicons name="checkmark" size={22} color={Colors.background} />
+              <Text style={qam.confirmTxt}>Add to Session</Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+    </View>
+  );
+}
+const qam = StyleSheet.create({
+  overlay:     { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000A', justifyContent: 'flex-end', zIndex: 999 },
+  sheet:       { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, maxHeight: '85%' },
+  header:      { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  backBtn:     { width: 40 },
+  title:       { ...Typography.h2, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
+  typeCard:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 1 },
+  typeLabel:   { ...Typography.h3, fontWeight: '700' },
+  fieldLabel:  { ...Typography.label, color: Colors.textSecondary },
+  chipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  chip:        { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.surfaceRaised },
+  chipActive:  { backgroundColor: Colors.primary },
+  chipTxt:     { ...Typography.bodySmall, color: Colors.textSecondary },
+  chipActiveTxt:{ color: Colors.background, fontWeight: '700' },
+  stepperRow:  { flexDirection: 'row', gap: Spacing.sm },
+  timerHint:   { ...Typography.timerMedium, color: Colors.amber, alignSelf: 'flex-end', fontFamily: DIGITAL_FONT, letterSpacing: 2, paddingBottom: 4 },
+  helpTxt:     { ...Typography.bodySmall, color: Colors.textMuted, fontStyle: 'italic' },
+  confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  confirmTxt:  { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+});
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function TrainingScreen({ navigation, route }) {
   useKeepAwake();
 
-  const { session } = route.params ?? {};
+  const { session: sessionParam, adHoc = false } = route.params ?? {};
+
+  // Ad-hoc mode: exercises live in state, not in a pre-defined session
+  const sessionIdRef    = useRef(sessionParam?.id ?? generateId());
+  const sessionNameRef  = useRef(sessionParam?.name ?? `Quick Training — ${new Date().toLocaleDateString('en',{month:'short',day:'numeric'})}`);
+  const [adHocExercises, setAdHocExercises] = useState(sessionParam?.exercises ?? []);
+  const [showQuickAdd,   setShowQuickAdd]   = useState(false);
+
+  // Computed session view (stable in normal mode, reactive in ad-hoc)
+  const session = adHoc
+    ? { id: sessionIdRef.current, name: sessionNameRef.current, exercises: adHocExercises, restTimerSecs: sessionParam?.restTimerSecs ?? 60 }
+    : sessionParam;
+
+  // ── Timeline ─────────────────────────────────────────────────────────────
+  const timelineRef = useRef([{ t: 0, action: 'session_start' }]);
+  const startTimeRef = useRef(null); // set once on mount, used by addEvent
+  const addEvent = useCallback((action, details = {}) => {
+    if (!startTimeRef.current) return;
+    const t = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    timelineRef.current.push({ t, action, ...details });
+  }, []);
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -408,9 +653,23 @@ export default function TrainingScreen({ navigation, route }) {
   const exStatesRef = useRef(exStates);
   useEffect(() => { exStatesRef.current = exStates; }, [exStates]);
 
+  // When exercises are added in ad-hoc mode, initialize state for the new ones
+  const prevExerciseIds = useRef(new Set((session?.exercises ?? []).map(e => e.id)));
+  useEffect(() => {
+    if (!adHoc) return;
+    const newExs = adHocExercises.filter(e => !prevExerciseIds.current.has(e.id));
+    if (!newExs.length) return;
+    newExs.forEach(e => prevExerciseIds.current.add(e.id));
+    const newStates = initExerciseStates(newExs);
+    setExStates(prev => ({ ...prev, ...newStates }));
+  }, [adHocExercises, adHoc]);
+
   // Performance order
   const [perfOrder, setPerfOrder] = useState([]);
   const [startTime]               = useState(new Date());
+
+  // Set startTimeRef once so addEvent can compute elapsed seconds
+  useEffect(() => { startTimeRef.current = startTime.getTime(); }, [startTime]);
 
   // Flag to allow programmatic navigation without triggering the back confirm dialog
   const navigatingAway = useRef(false);
@@ -459,6 +718,7 @@ export default function TrainingScreen({ navigation, route }) {
     const remaining = Math.max(0, Math.round((restEndTimeRef.current - Date.now()) / 1000));
     if (remaining <= 0) {
       cancelTimerNotification(restNotifRef.current); restNotifRef.current = null;
+      addEvent('rest_end');
       playRestBeep();
       restEndTimeRef.current = null;
       setRestSec(session?.restTimerSecs ?? 60);
@@ -466,7 +726,7 @@ export default function TrainingScreen({ navigation, route }) {
     } else {
       setRestSec(remaining);
     }
-  }, [session]);
+  }, [session, addEvent]);
 
   useEffect(() => {
     if (!restActive) return;
@@ -487,6 +747,7 @@ export default function TrainingScreen({ navigation, route }) {
     const remaining = Math.max(0, Math.round((warmupEndTimeRef.current - Date.now()) / 1000));
     if (remaining <= 0) {
       cancelTimerNotification(warmupNotifRef.current); warmupNotifRef.current = null;
+      addEvent('warmup_end', { exerciseName: warmupEx?.warmupType });
       playRestBeep();
       warmupEndTimeRef.current = null;
       setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
@@ -495,7 +756,7 @@ export default function TrainingScreen({ navigation, route }) {
     } else {
       setExStates(prev => ({ ...prev, [warmupEx.id]: { ...prev[warmupEx.id], timeLeft: remaining } }));
     }
-  }, [warmupEx]);
+  }, [warmupEx, addEvent]);
 
   useEffect(() => {
     if (!warmupEx) return;
@@ -532,9 +793,16 @@ export default function TrainingScreen({ navigation, route }) {
     const { state: nextSt, phaseEndMs } = fastForwardIntervals(cur, intervalsPhaseEndRef.current, now);
     intervalsPhaseEndRef.current = nextSt.isRunning ? phaseEndMs : null;
     setExStates(prev => ({ ...prev, [intervalsEx.id]: nextSt }));
-    // One beep per resync, regardless of how many phases were caught up at once
-    if (nextSt.phase !== prevPhase || nextSt.repsLeft !== prevReps) playIntervalBeep();
+    if (nextSt.phase !== prevPhase || nextSt.repsLeft !== prevReps) {
+      playIntervalBeep();
+      addEvent('interval_phase', {
+        phase:   nextSt.phase,
+        repsDone: (nextSt.reps ?? 8) - (nextSt.repsLeft ?? 0),
+        repsLeft: nextSt.repsLeft,
+      });
+    }
     if (nextSt.status === 'complete') {
+      addEvent('intervals_done');
       cancelTimerNotification(intervalsNotifRef.current); intervalsNotifRef.current = null;
       setTimeout(() => { addToPerfOrder(intervalsEx.id); setSelectedId(null); }, 300);
     } else if (nextSt.isRunning && phaseEndMs) {
@@ -545,7 +813,7 @@ export default function TrainingScreen({ navigation, route }) {
       scheduleTimerNotification(secsUntilNextPhase, `Intervals — ${phaseLabel} 🏃`, 'beep_interval.wav')
         .then(id => { intervalsNotifRef.current = id; });
     }
-  }, [intervalsEx]);
+  }, [intervalsEx, addEvent]);
 
   useEffect(() => {
     if (!intervalsEx) return;
@@ -580,11 +848,12 @@ export default function TrainingScreen({ navigation, route }) {
   const activateRest = useCallback(() => {
     const secs = session?.restTimerSecs ?? 60;
     restEndTimeRef.current = Date.now() + secs * 1000;
+    addEvent('rest_start', { durationSecs: secs });
     setRestSec(secs);
     setRestActive(true);
     scheduleTimerNotification(secs, 'Rest over — time to lift! 💪', 'beep_rest.wav')
       .then(id => { restNotifRef.current = id; });
-  }, [session]);
+  }, [session, addEvent]);
 
   // ─── Auto-complete check ─────────────────────────────────────────────────
   useEffect(() => {
@@ -599,9 +868,11 @@ export default function TrainingScreen({ navigation, route }) {
   // ─── End session ─────────────────────────────────────────────────────────
   const doEndSession = useCallback(() => {
     const exs = session?.exercises ?? [];
-    const allIds = exs.map(e => e.id);
+    const allIds   = exs.map(e => e.id);
     const remaining = allIds.filter(id => !perfOrder.includes(id));
     const ordered   = [...perfOrder, ...remaining];
+
+    addEvent('session_end');
 
     const summary = {
       sessionName: session?.name ?? 'Session',
@@ -609,17 +880,19 @@ export default function TrainingScreen({ navigation, route }) {
       startTime:   startTime.toISOString(),
       endTime:     new Date().toISOString(),
       totalDurationSecs: elapsedSec,
+      timeline:    timelineRef.current,
       exercises: ordered.map((id, idx) => {
         const ex = exs.find(e => e.id === id);
         const st = exStatesRef.current[id];
         const base = { id, type: ex?.type, name: getExerciseName(ex), status: st?.status ?? 'pending', performanceOrder: idx };
         if (ex?.type === EXERCISE_TYPES.REGULAR)
-          return { ...base, weight: st.weight, reps: st.reps, plannedSets: ex.sets, completedSets: st.setsCompleted };
+          return { ...base, bodySection: ex?.bodySection, weight: st.weight, reps: st.reps, plannedSets: ex.sets, completedSets: st.setsCompleted };
         if (ex?.type === EXERCISE_TYPES.COMBO)
           return { ...base, plannedSets: ex.sets, completedSets: st.setsCompleted,
             subExercises: (ex.subExercises ?? []).map((s, i) => ({
               name: s.name === 'Other' ? s.customName : s.name,
-              weight: st.subWeights[i], reps: st.subReps[i],
+              bodySection: s.bodySection,
+              weight: st.subWeights?.[i], reps: st.subReps?.[i],
             })) };
         if (ex?.type === EXERCISE_TYPES.WARMUP)
           return { ...base, warmupType: ex.warmupType, plannedDurationSecs: ex.duration ?? 180 };
@@ -631,10 +904,10 @@ export default function TrainingScreen({ navigation, route }) {
 
     playCompleteSound();
     cancelAllTimerNotifications();
-    syncWorkout(summary); // fire-and-forget — won't block navigation or throw
+    syncWorkout(summary);
     navigatingAway.current = true;
     navigation.replace('Summary', { summary });
-  }, [elapsedSec, perfOrder, session, startTime, navigation]);
+  }, [elapsedSec, perfOrder, session, startTime, navigation, addEvent]);
 
   const confirmEnd = useCallback(() => {
     setShowEndConfirm(true);
@@ -670,17 +943,27 @@ export default function TrainingScreen({ navigation, route }) {
     setExStates(prev => {
       const st = prev[id];
       if (!st || st.setsLeft <= 0) return prev;
-      const setsLeft  = st.setsLeft - 1;
+      const setsLeft      = st.setsLeft - 1;
       const setsCompleted = st.setsCompleted + 1;
-      const status    = setsLeft === 0 ? 'complete' : 'partial';
+      const status        = setsLeft === 0 ? 'complete' : 'partial';
       if (setsLeft === 0) setTimeout(() => setSelectedId(null), 400);
+      const ex = (session?.exercises ?? []).find(e => e.id === id);
+      addEvent('set_done', {
+        exerciseName: getExerciseName(ex),
+        bodySection:  ex?.bodySection ?? null,
+        setNumber:    setsCompleted,
+        setsLeft,
+        weight:       st.weight,
+        reps:         st.reps,
+      });
       return { ...prev, [id]: { ...st, setsLeft, setsCompleted, status } };
     });
     activateRest();
-  }, [activateRest]);
+  }, [activateRest, session, addEvent]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
-  const selectedEx    = selectedId ? (session?.exercises ?? []).find(e => e.id === selectedId) : null;
+  const exercises     = session?.exercises ?? [];
+  const selectedEx    = selectedId ? exercises.find(e => e.id === selectedId) : null;
   const selectedState = selectedId ? exStates[selectedId] : null;
   const contentH      = windowHeight - headerH;
 
@@ -727,12 +1010,13 @@ export default function TrainingScreen({ navigation, route }) {
       <View style={{ height: contentH - 1 }}>
         {!selectedEx ? (
           /* Exercise list */
-          <FlatList
-            data={session?.exercises ?? []}
-            keyExtractor={item => item.id}
-            style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xl }]}
-            renderItem={({ item }) => {
+          <>
+            <FlatList
+              data={exercises}
+              keyExtractor={item => item.id}
+              style={{ flex: 1, minHeight: 0 }}
+              contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xl }]}
+              renderItem={({ item }) => {
               const st = exStates[item.id];
               return (
                 <TouchableOpacity
@@ -753,6 +1037,18 @@ export default function TrainingScreen({ navigation, route }) {
               );
             }}
           />
+          {/* Ad-hoc Quick Add button */}
+          {adHoc && (
+            <TouchableOpacity
+              style={styles.quickAddFab}
+              onPress={() => setShowQuickAdd(true)}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="add" size={28} color={Colors.background} />
+              <Text style={styles.quickAddTxt}>Add Exercise</Text>
+            </TouchableOpacity>
+          )}
+          </>
         ) : (
           /* Exercise detail */
           <ScrollView
@@ -778,6 +1074,7 @@ export default function TrainingScreen({ navigation, route }) {
                   const starting = !st.isRunning;
                   if (starting) {
                     warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
+                    addEvent('warmup_start', { exerciseName: selectedEx?.warmupType, durationSecs: st.timeLeft });
                     scheduleTimerNotification(st.timeLeft, 'Warmup complete — session started! 🔥', 'beep_rest.wav')
                       .then(id => { warmupNotifRef.current = id; });
                   } else {
@@ -847,6 +1144,18 @@ export default function TrainingScreen({ navigation, route }) {
           </View>
         </View>
       )}
+
+      {/* ── Quick Add Exercise (ad-hoc mode) ───────────────────────── */}
+      {showQuickAdd && (
+        <QuickAddModal
+          exercises={exercises}
+          onAdd={(ex) => {
+            setAdHocExercises(prev => [...prev, ex]);
+            setShowQuickAdd(false);
+          }}
+          onClose={() => setShowQuickAdd(false)}
+        />
+      )}
     </View>
   );
 }
@@ -904,4 +1213,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   confirmEndTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
+
+  // Ad-hoc Quick Add FAB
+  quickAddFab: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, backgroundColor: Colors.primary,
+    margin: Spacing.md, height: 52, borderRadius: Radius.full, ...Shadows.orange,
+  },
+  quickAddTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 });

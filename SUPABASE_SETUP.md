@@ -51,3 +51,12 @@ CREATE POLICY "own exercises" ON workout_exercises
 
 ## 3. Add credentials to the app
 Edit `src/config/supabase.js` and replace the two placeholder strings.
+
+## SQL Migration — add timeline column
+
+Run this in the Supabase SQL Editor to add timeline support:
+
+```sql
+ALTER TABLE workout_sessions
+  ADD COLUMN IF NOT EXISTS timeline JSONB;
+```

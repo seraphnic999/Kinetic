@@ -148,13 +148,29 @@ function ChartTooltip({ active, payload, label, unit='' }) {
 // ─── Session row ──────────────────────────────────────────────────────────────
 function SessionRow({ session }) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab]   = useState('exercises'); // 'exercises' | 'timeline'
   const statusColor = { complete:C.gold, partial:C.amber, pending:C.muted };
+
   const exDetail = e => {
     if(e.exercise_type==='regular'&&e.weight_kg!=null)
       return `${e.weight_kg}kg × ${e.sets_completed??e.sets_planned??'?'}×${e.reps??'?'}`;
     if(e.exercise_type==='warmup'&&e.duration_secs) return fmtSecs(e.duration_secs);
     if(e.exercise_type==='intervals') return `${e.intervals_done??'?'}/${e.intervals_planned??'?'} reps`;
     return '';
+  };
+
+  const timeline = session.timeline ?? [];
+
+  const actionLabel = {
+    session_start:  '🏁 Session started',
+    warmup_start:   '🔥 Warmup started',
+    warmup_end:     '✅ Warmup complete',
+    rest_start:     '⏸ Rest started',
+    rest_end:       '▶️ Rest over',
+    set_done:       '✓ Set done',
+    interval_phase: '⚡ Phase change',
+    intervals_done: '✅ Intervals complete',
+    session_end:    '🏆 Session ended',
   };
 
   return (
@@ -174,21 +190,81 @@ function SessionRow({ session }) {
         </svg>
       </button>
 
-      {open && (session.exercises??[]).length > 0 && (
+      {open && (
         <div className="px-5 pb-4 border-t border-border">
-          <div className="mt-3 space-y-2">
-            {session.exercises.map((e,i)=>(
-              <div key={i} className="flex items-start gap-3">
-                <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                  style={{backgroundColor:statusColor[e.status]??C.muted}} />
-                <div className="flex-1">
-                  <span className="text-sm font-medium">{e.exercise_name}</span>
-                  {e.body_section && <span className="text-amber text-xs ml-2">{e.body_section}</span>}
-                </div>
-                <span className="text-secondary text-sm">{exDetail(e)}</span>
-              </div>
-            ))}
+          {/* Tab switcher */}
+          <div className="flex gap-2 mt-3 mb-4">
+            <button onClick={()=>setTab('exercises')}
+              className={`px-3 py-1 rounded-full text-sm transition ${tab==='exercises'?'bg-primary text-bg font-semibold':'bg-raised text-secondary'}`}>
+              Exercises
+            </button>
+            {timeline.length > 0 && (
+              <button onClick={()=>setTab('timeline')}
+                className={`px-3 py-1 rounded-full text-sm transition ${tab==='timeline'?'bg-primary text-bg font-semibold':'bg-raised text-secondary'}`}>
+                Timeline ({timeline.length})
+              </button>
+            )}
           </div>
+
+          {/* Exercises tab */}
+          {tab === 'exercises' && (
+            <div className="space-y-2">
+              {(session.exercises??[]).map((e,i)=>(
+                <div key={i} className="flex items-start gap-3">
+                  <div className="w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                    style={{backgroundColor:statusColor[e.status]??C.muted}} />
+                  <div className="flex-1">
+                    <span className="text-sm font-medium">{e.exercise_name}</span>
+                    {e.body_section && <span className="ml-2 text-xs" style={{color:C.amber}}>{e.body_section}</span>}
+                  </div>
+                  <span className="text-secondary text-sm">{exDetail(e)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Timeline tab */}
+          {tab === 'timeline' && timeline.length > 0 && (
+            <div className="space-y-1">
+              {timeline.map((ev, i) => {
+                const isSet = ev.action === 'set_done';
+                const isPhase = ev.action === 'interval_phase';
+                return (
+                  <div key={i} className="flex items-start gap-3 py-1.5 border-b border-border last:border-0">
+                    {/* Timestamp */}
+                    <span className="text-xs font-mono text-muted w-12 flex-shrink-0 mt-0.5">
+                      {fmtSecs(ev.t ?? 0)}
+                    </span>
+                    {/* Action */}
+                    <div className="flex-1">
+                      <span className="text-sm text-secondary">
+                        {actionLabel[ev.action] ?? ev.action}
+                      </span>
+                      {isSet && (
+                        <span className="ml-2 text-sm font-medium text-white">
+                          {ev.exerciseName}
+                          {ev.bodySection ? ` (${ev.bodySection})` : ''}
+                          {ev.weight ? ` — ${ev.weight}kg × ${ev.reps} reps` : ''}
+                          {` · set #${ev.setNumber}, ${ev.setsLeft} left`}
+                        </span>
+                      )}
+                      {isPhase && (
+                        <span className="ml-2 text-sm" style={{color:C.amber}}>
+                          → {ev.phase} (rep {ev.repsDone}/{(ev.repsDone??0)+(ev.repsLeft??0)})
+                        </span>
+                      )}
+                      {ev.action === 'warmup_start' && ev.exerciseName && (
+                        <span className="ml-2 text-sm text-white">{ev.exerciseName} · {fmtSecs(ev.durationSecs ?? 0)}</span>
+                      )}
+                      {ev.action === 'rest_start' && ev.durationSecs && (
+                        <span className="ml-2 text-sm text-secondary">{fmtSecs(ev.durationSecs)}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -212,7 +288,7 @@ export default function DashboardPage() {
 
     const { data: raw } = await supabase
       .from('workout_sessions')
-      .select(`id, name, started_at, duration_secs,
+      .select(`id, name, started_at, duration_secs, timeline,
         workout_exercises(exercise_type,exercise_name,body_section,status,
           weight_kg,sets_planned,sets_completed,reps,
           duration_secs,intervals_planned,intervals_done,perf_order)`)

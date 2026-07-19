@@ -127,6 +127,21 @@ export default function SessionListScreen({ navigation }) {
             <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: Colors.amber }]}
+            onPress={() => navigation.navigate('Training', {
+              adHoc: true,
+              session: {
+                id: null,
+                name: `Quick Training — ${new Date().toLocaleDateString('en',{month:'short',day:'numeric'})}`,
+                exercises: [],
+                restTimerSecs: 60,
+              },
+            })}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="flash-outline" size={22} color={Colors.background} />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={styles.addBtn}
             onPress={() => navigation.navigate('SessionEditor', { session: null })}
             activeOpacity={0.8}
