@@ -118,10 +118,10 @@ const initExerciseStates = (exercises) => {
   const s = {};
   (exercises ?? []).forEach(ex => {
     if (ex.type === EXERCISE_TYPES.REGULAR) {
-      s[ex.id] = { setsLeft: ex.sets, setsCompleted: 0, weight: ex.weight, reps: ex.reps, status: 'pending' };
+      s[ex.id] = { setsLeft: ex.sets, setsCompleted: 0, weight: ex.weight, reps: ex.reps, status: 'pending', setStartedAt: null };
     } else if (ex.type === EXERCISE_TYPES.COMBO) {
       s[ex.id] = {
-        setsLeft: ex.sets, setsCompleted: 0, status: 'pending',
+        setsLeft: ex.sets, setsCompleted: 0, status: 'pending', setStartedAt: null,
         subWeights: (ex.subExercises ?? []).map(s => s.weight ?? 0),
         subReps:    (ex.subExercises ?? []).map(s => s.reps ?? 1),
       };
@@ -151,8 +151,19 @@ const dotStyles = StyleSheet.create({
 });
 
 // ─── Regular exercise detail ───────────────────────────────────────────────────
-function RegularDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
-  const done = state.setsLeft === 0;
+function RegularDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack }) {
+  const done     = state.setsLeft === 0;
+  const started  = state.setStartedAt != null;
+
+  // Live elapsed counter while set is in progress
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!started) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [started]);
+  const setElapsed = started ? Math.floor((now - state.setStartedAt) / 1000) : 0;
+
   return (
     <View style={d.container}>
       <Text style={d.name}>{getExerciseName(exercise)}</Text>
@@ -170,13 +181,31 @@ function RegularDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
           onChange={v => onUpdate({ reps: v })} />
       </View>
 
-      {done
-        ? <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold} /><Text style={d.doneText}>Complete!</Text></View>
-        : <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
+      {done ? (
+        <View style={d.doneBadge}>
+          <Ionicons name="checkmark-circle" size={30} color={Colors.gold} />
+          <Text style={d.doneText}>Complete!</Text>
+        </View>
+      ) : !started ? (
+        /* Waiting to start — show START SET */
+        <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
+          <Ionicons name="play" size={26} color={Colors.background} />
+          <Text style={d.actionTxt}>START SET</Text>
+        </TouchableOpacity>
+      ) : (
+        /* Set in progress — show elapsed + SET DONE */
+        <>
+          <View style={d.elapsedRow}>
+            <Ionicons name="timer-outline" size={18} color={Colors.amber} />
+            <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
+          </View>
+          <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
             <Ionicons name="checkmark" size={26} color={Colors.background} />
             <Text style={d.actionTxt}>SET DONE</Text>
           </TouchableOpacity>
-      }
+        </>
+      )}
+
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
         <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
@@ -186,8 +215,17 @@ function RegularDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
 }
 
 // ─── Combo detail ─────────────────────────────────────────────────────────────
-function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
-  const done = state.setsLeft === 0;
+function ComboDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack }) {
+  const done    = state.setsLeft === 0;
+  const started = state.setStartedAt != null;
+
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!started) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [started]);
+  const setElapsed = started ? Math.floor((now - state.setStartedAt) / 1000) : 0;
   return (
     <View style={d.container}>
       <Text style={d.name}>🔗 {exercise.name || 'Combo'}</Text>
@@ -224,13 +262,25 @@ function ComboDetail({ exercise, state, onUpdate, onSetDone, onBack }) {
         })}
       </View>
 
-      {done
-        ? <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
-        : <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
+      {done ? (
+        <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
+      ) : !started ? (
+        <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
+          <Ionicons name="play" size={26} color={Colors.background} />
+          <Text style={d.actionTxt}>START SET</Text>
+        </TouchableOpacity>
+      ) : (
+        <>
+          <View style={d.elapsedRow}>
+            <Ionicons name="timer-outline" size={18} color={Colors.amber} />
+            <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
+          </View>
+          <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
             <Ionicons name="git-merge-outline" size={22} color={Colors.background} />
             <Text style={d.actionTxt}>COMBO SET DONE</Text>
           </TouchableOpacity>
-      }
+        </>
+      )}
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
         <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
@@ -392,7 +442,11 @@ const d = StyleSheet.create({
   actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.sm, ...Shadows.orange },
+  startBtn:  { backgroundColor: Colors.surfaceRaised, borderWidth: 2, borderColor: Colors.primary },
   actionTxt: { ...Typography.h2, color: Colors.background, fontWeight: '800' },
+  elapsedRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+               gap: Spacing.xs, paddingVertical: Spacing.xs },
+  elapsedTxt:{ ...Typography.body, color: Colors.amber },
   doneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.md, padding: Spacing.lg },
   doneText:  { ...Typography.h2, color: Colors.gold },
@@ -965,6 +1019,17 @@ export default function TrainingScreen({ navigation, route }) {
     setSelectedId(null);
   }, [session]);
 
+  const handleSetStart = useCallback((id) => {
+    const ex = (session?.exercises ?? []).find(e => e.id === id);
+    const st = exStatesRef.current[id];
+    addEvent('set_start', {
+      exerciseName: getExerciseName(ex),
+      bodySection:  ex?.bodySection ?? null,
+      setNumber:    (st?.setsCompleted ?? 0) + 1,
+    });
+    setExStates(prev => ({ ...prev, [id]: { ...prev[id], setStartedAt: Date.now() } }));
+  }, [session, addEvent]);
+
   const handleSetDone = useCallback((id) => {
     setExStates(prev => {
       const st = prev[id];
@@ -974,6 +1039,9 @@ export default function TrainingScreen({ navigation, route }) {
       const status        = setsLeft === 0 ? 'complete' : 'partial';
       if (setsLeft === 0) setTimeout(() => setSelectedId(null), 400);
       const ex = (session?.exercises ?? []).find(e => e.id === id);
+      const durationSecs = st.setStartedAt
+        ? Math.round((Date.now() - st.setStartedAt) / 1000)
+        : undefined;
       addEvent('set_done', {
         exerciseName: getExerciseName(ex),
         bodySection:  ex?.bodySection ?? null,
@@ -981,8 +1049,9 @@ export default function TrainingScreen({ navigation, route }) {
         setsLeft,
         weight:       st.weight,
         reps:         st.reps,
+        durationSecs,
       });
-      return { ...prev, [id]: { ...st, setsLeft, setsCompleted, status } };
+      return { ...prev, [id]: { ...st, setsLeft, setsCompleted, status, setStartedAt: null } };
     });
     activateRest();
   }, [activateRest, session, addEvent]);
@@ -1084,12 +1153,14 @@ export default function TrainingScreen({ navigation, route }) {
             {selectedEx.type === EXERCISE_TYPES.REGULAR && (
               <RegularDetail exercise={selectedEx} state={selectedState}
                 onUpdate={p => setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...p } }))}
+                onSetStart={() => handleSetStart(selectedId)}
                 onSetDone={() => handleSetDone(selectedId)}
                 onBack={() => goBack(selectedId)} />
             )}
             {selectedEx.type === EXERCISE_TYPES.COMBO && (
               <ComboDetail exercise={selectedEx} state={selectedState}
                 onUpdate={p => setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...p } }))}
+                onSetStart={() => handleSetStart(selectedId)}
                 onSetDone={() => handleSetDone(selectedId)}
                 onBack={() => goBack(selectedId)} />
             )}

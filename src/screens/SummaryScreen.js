@@ -1,13 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, StatusBar, useWindowDimensions,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+  ScrollView, StatusBar, useWindowDimensions, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { formatTime } from '../utils/time';
 import { EXERCISE_TYPES } from '../data/exercises';
+import { generateTrainingCsv } from '../utils/generateCsv';
 
 const STATUS_ICON = {
   complete: { name: 'checkmark-circle', color: Colors.gold },
@@ -125,6 +128,41 @@ export default function SummaryScreen({ navigation, route }) {
   const totalCount     = summary.exercises.length;
   const startDate      = new Date(summary.startTime);
 
+  const [downloading, setDownloading] = useState(false);
+
+  const downloadCsv = async () => {
+    setDownloading(true);
+    try {
+      const csv = generateTrainingCsv(summary);
+      const safeName = (summary.sessionName ?? 'training')
+        .replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const dateStr = new Date(summary.startTime ?? Date.now())
+        .toISOString().slice(0, 10);
+      const filename = `kinetic_${safeName}_${dateStr}.csv`;
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a); URL.revokeObjectURL(url);
+      } else {
+        const path = `${FileSystem.cacheDirectory}${filename}`;
+        await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Save training report' });
+        } else {
+          Alert.alert('Sharing not available', 'Cannot open the share sheet on this device.');
+        }
+      }
+    } catch (e) {
+      Alert.alert('Export failed', e?.message ?? String(e));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <View style={[styles.container, { height: windowHeight }]}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
@@ -174,8 +212,20 @@ export default function SummaryScreen({ navigation, route }) {
         </View>
       </ScrollView>
 
-      {/* Home button */}
+      {/* Footer */}
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
+        <TouchableOpacity
+          style={styles.csvBtn}
+          onPress={downloadCsv}
+          activeOpacity={0.8}
+          disabled={downloading}
+        >
+          {downloading
+            ? <ActivityIndicator size="small" color={Colors.primary} />
+            : <Ionicons name="download-outline" size={20} color={Colors.primary} />
+          }
+          <Text style={styles.csvBtnTxt}>Download CSV</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.homeBtn}
           onPress={() => navigation.popToTop()}
@@ -219,10 +269,17 @@ const styles = StyleSheet.create({
   jsonNoteText: { ...Typography.bodySmall, color: Colors.textMuted },
 
   footer: {
+    flexDirection: 'row', gap: Spacing.sm,
     padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border,
   },
+  csvBtn: {
+    flex: 1, height: 56, borderRadius: Radius.lg,
+    borderWidth: 2, borderColor: Colors.primary,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
+  },
+  csvBtnTxt:  { ...Typography.h3, color: Colors.primary, fontWeight: '700' },
   homeBtn: {
-    height: 56, borderRadius: Radius.lg, backgroundColor: Colors.primary,
+    flex: 1, height: 56, borderRadius: Radius.lg, backgroundColor: Colors.primary,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
     ...Shadows.orange,
   },
