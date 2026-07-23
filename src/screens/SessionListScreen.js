@@ -118,20 +118,20 @@ export default function SessionListScreen({ navigation }) {
           <Text style={styles.headerTitle}>Kinetic</Text>
           <Text style={styles.headerSubtitle}>Your training sessions</Text>
         </View>
-        <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+        <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
             onPress={() => navigation.navigate('Dashboard')}
             activeOpacity={0.8}
           >
-            <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
+            <Ionicons name="bar-chart-outline" size={20} color={Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
             onPress={() => navigation.navigate('Metrics')}
             activeOpacity={0.8}
           >
-            <Ionicons name="body-outline" size={22} color={Colors.blue} />
+            <Ionicons name="scale-outline" size={20} color={Colors.blue} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.amber }]}
@@ -146,14 +146,14 @@ export default function SessionListScreen({ navigation }) {
             })}
             activeOpacity={0.8}
           >
-            <Ionicons name="flash-outline" size={22} color={Colors.background} />
+            <Ionicons name="flash-outline" size={20} color={Colors.background} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => navigation.navigate('SessionEditor', { session: null })}
             activeOpacity={0.8}
           >
-            <Ionicons name="add" size={28} color={Colors.background} />
+            <Ionicons name="add" size={26} color={Colors.background} />
           </TouchableOpacity>
         </View>
       </View>

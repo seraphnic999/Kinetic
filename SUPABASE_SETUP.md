@@ -78,3 +78,22 @@ ALTER TABLE weekly_metrics ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "own metrics" ON weekly_metrics
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
+
+## SQL Migration — weekly body metrics
+
+```sql
+CREATE TABLE body_metrics (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES auth.users NOT NULL,
+  week_date  DATE NOT NULL,           -- Monday of that week (YYYY-MM-DD)
+  weight_kg  NUMERIC(5,1),            -- e.g. 82.5
+  waist_cm   NUMERIC(5,1),            -- e.g. 91.0
+  diet_pct   INTEGER CHECK (diet_pct BETWEEN 0 AND 100),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (user_id, week_date)         -- one entry per user per week (upsert-safe)
+);
+
+ALTER TABLE body_metrics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own metrics" ON body_metrics
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+```

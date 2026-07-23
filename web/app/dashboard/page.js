@@ -337,7 +337,7 @@ export default function DashboardPage() {
         .order('started_at', { ascending: false })
         .limit(100),
       supabase
-        .from('weekly_metrics')
+        .from('body_metrics')
         .select('week_date, weight_kg, waist_cm, diet_pct')
         .order('week_date', { ascending: false })
         .limit(52),
@@ -391,7 +391,7 @@ export default function DashboardPage() {
       ...(!isNaN(c) && { waist_cm: c }),
       ...(!isNaN(d) && d >= 0 && d <= 100 && { diet_pct: d }),
     };
-    await supabase.from('weekly_metrics').upsert(payload, { onConflict: 'user_id,week_date' });
+    await supabase.from('body_metrics').upsert(payload, { onConflict: 'user_id,week_date' });
     await load();
     setSavingMetrics(false);
   };

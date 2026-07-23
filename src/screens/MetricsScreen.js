@@ -1,7 +1,18 @@
-import React, { useState, useCallback, useRef } from 'react';
+/**
+ * MetricsScreen — weekly body metrics logging and history charts.
+ *
+ * Metrics tracked:
+ *   • Weight (kg, 1 decimal place)
+ *   • Waist circumference (cm, 1 decimal place)
+ *   • Diet adherence (%, integer 0–100)
+ *
+ * week_date is always the ISO Monday of the current week, so one entry
+ * per week per user — saved via upsert.
+ */
+import React, { useState, useCallback, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, ActivityIndicator, RefreshControl, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
+  ActivityIndicator, RefreshControl, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -9,385 +20,374 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { supabase } from '../config/supabase';
 
-// ─── Date helpers ──────────────────────────────────────────────────────────────
-function getWeekMonday(date = new Date()) {
-  const d = new Date(date); d.setHours(12, 0, 0, 0);
-  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
-}
-function weekLabel(iso) {
-  const mon = new Date(iso + 'T12:00:00Z');
-  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
-  const f = d => d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
-  return `${f(mon)} – ${f(sun)}`;
-}
-function shiftWeek(iso, delta) {
-  const d = new Date(iso + 'T12:00:00Z');
-  d.setDate(d.getDate() + delta * 7);
-  return d.toISOString().slice(0, 10);
-}
-function isCurrentOrPast(iso) {
-  return iso <= getWeekMonday();
+// ─── Week helpers ─────────────────────────────────────────────────────────────
+
+/** Returns the ISO Monday (YYYY-MM-DD) for any given date (default: today). */
+function getWeekMonday(d = new Date()) {
+  const date = new Date(d);
+  const day  = date.getDay(); // 0 = Sunday
+  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
+  return date.toISOString().slice(0, 10);
 }
 
-// ─── Pure-View charts (same approach as DashboardScreen) ──────────────────────
-function LineChart({ data, color, unit = '' }) {
+/** Short label for a YYYY-MM-DD date. */
+function shortDate(iso) {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' });
+}
+
+// ─── Line chart (pure View, onLayout-based) ───────────────────────────────────
+function MetricLineChart({ data, color, domain }) {
   const [w, setW] = useState(0);
-  const valid = data.filter(d => d.value != null);
-  if (!valid.length) return (
-    <Text style={{ color: Colors.textMuted, textAlign: 'center', paddingVertical: Spacing.lg, fontSize: 13 }}>
-      No data yet
-    </Text>
-  );
-  const HEIGHT = 100;
+  if (!data?.length) return null;
+
+  const HEIGHT = 110;
   const DOT    = 7;
-  const PAD    = DOT / 2 + 4;
-  const max    = Math.max(...valid.map(d => d.value));
-  const min    = Math.min(...valid.map(d => d.value));
-  const range  = max - min || 1;
-  const pts    = w > 0 ? data.map((d, i) => ({
+  const PAD    = DOT;
+
+  const values = data.map(d => d.value);
+  const min    = domain?.[0] ?? Math.min(...values);
+  const max    = domain?.[1] ?? Math.max(...values);
+  const range  = Math.max(max - min, 0.01);
+
+  const pts = w > 0 ? data.map((d, i) => ({
     x: PAD + (i / Math.max(data.length - 1, 1)) * (w - 2 * PAD),
-    y: d.value == null ? null : PAD + ((max - d.value) / range) * (HEIGHT - 2 * PAD),
+    y: PAD + ((max - d.value) / range) * (HEIGHT - 2 * PAD),
     ...d,
   })) : [];
+
   const every = data.length > 8 ? Math.ceil(data.length / 6) : 1;
 
   return (
     <View>
       <View style={{ height: HEIGHT }} onLayout={e => setW(e.nativeEvent.layout.width)}>
         {w > 0 && pts.slice(0, -1).map((p, i) => {
-          const n = pts[i + 1];
-          if (p.y == null || n.y == null) return null;
+          const n  = pts[i + 1];
           const dx = n.x - p.x, dy = n.y - p.y;
           const len = Math.sqrt(dx * dx + dy * dy);
           const ang = Math.atan2(dy, dx) * 180 / Math.PI;
           return (
-            <View key={i} style={{
+            <View key={`l${i}`} style={{
               position: 'absolute',
-              left: (p.x + n.x) / 2 - len / 2, top: (p.y + n.y) / 2 - 1.5,
-              width: len, height: 3, backgroundColor: color + '70',
+              left: (p.x + n.x) / 2 - len / 2,
+              top:  (p.y + n.y) / 2 - 1.5,
+              width: len, height: 3,
+              backgroundColor: color + '70',
               transform: [{ rotate: `${ang}deg` }],
             }} />
           );
         })}
-        {w > 0 && pts.map((p, i) => p.y == null ? null : (
-          <View key={i} style={{
-            position: 'absolute', left: p.x - DOT / 2, top: p.y - DOT / 2,
+        {w > 0 && pts.map((p, i) => (
+          <View key={`d${i}`} style={{
+            position: 'absolute',
+            left: p.x - DOT / 2, top: p.y - DOT / 2,
             width: DOT, height: DOT, borderRadius: DOT / 2,
-            backgroundColor: color, borderWidth: 2, borderColor: Colors.background,
+            backgroundColor: color,
+            borderWidth: 2, borderColor: Colors.background,
           }} />
         ))}
-        {w > 0 && valid.length > 0 && (
+        {w > 0 && (
           <>
-            <Text style={{ position: 'absolute', right: 0, top: PAD - 8, fontSize: 8, color: Colors.textMuted }}>
-              {max}{unit}
-            </Text>
-            <Text style={{ position: 'absolute', right: 0, bottom: 4, fontSize: 8, color: Colors.textMuted }}>
-              {min}{unit}
-            </Text>
+            <Text style={[lc.axisLabel, { top: PAD - 8 }]}>{max}</Text>
+            <Text style={[lc.axisLabel, { bottom: 4 }]}>{min}</Text>
           </>
         )}
       </View>
-      <View style={{ flexDirection: 'row', marginTop: 4 }}>
-        {data.map((d, i) => (
-          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-            {i % every === 0 && (
-              <Text style={{ fontSize: 8, color: Colors.textMuted }}>{d.label}</Text>
-            )}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function DietBar({ data }) {
-  if (!data.some(d => d.value != null)) return (
-    <Text style={{ color: Colors.textMuted, textAlign: 'center', paddingVertical: Spacing.lg, fontSize: 13 }}>
-      No data yet
-    </Text>
-  );
-  const max = 100;
-  const HEIGHT = 100;
-  const every = data.length > 8 ? Math.ceil(data.length / 6) : 1;
-  const barColor = v => v >= 90 ? '#4CAF50' : v >= 70 ? Colors.amber : Colors.danger;
-
-  return (
-    <View>
-      <View style={{ height: HEIGHT, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-        {data.map((d, i) => {
-          const barH = d.value == null ? 0 : Math.max(4, (d.value / max) * (HEIGHT - 16));
-          const col  = d.value == null ? Colors.raised : barColor(d.value);
-          return (
-            <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
-              {d.value != null && (
-                <Text style={{ fontSize: 8, color: col, marginBottom: 2 }}>{d.value}%</Text>
-              )}
-              <View style={{ width: '70%', height: barH, backgroundColor: col + (d.value == null ? '0' : 'CC'), borderRadius: 3 }} />
+      {w > 0 && (
+        <View style={{ flexDirection: 'row', marginTop: 4 }}>
+          {data.map((d, i) => (
+            <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+              {i % every === 0 && <Text style={lc.xLabel}>{shortDate(d.week_date)}</Text>}
             </View>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', marginTop: 4 }}>
-        {data.map((d, i) => (
-          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-            {i % every === 0 && <Text style={{ fontSize: 8, color: Colors.textMuted }}>{d.label}</Text>}
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
+const lc = StyleSheet.create({
+  axisLabel: { position: 'absolute', right: 0, fontSize: 8, color: Colors.textMuted },
+  xLabel:    { fontSize: 8, color: Colors.textMuted },
+});
 
-// ─── Metric input ──────────────────────────────────────────────────────────────
-function MetricInput({ label, value, onChange, unit, placeholder, decimal }) {
+// ─── Single metric card with chart ───────────────────────────────────────────
+function MetricCard({ title, icon, color, data, unit, domain }) {
+  if (!data?.length) return null;
+  const latest = data[data.length - 1];
   return (
-    <View style={s.metricRow}>
-      <Text style={s.metricLabel}>{label}</Text>
-      <View style={s.metricInputWrap}>
+    <View style={mc.card}>
+      <View style={mc.header}>
+        <Ionicons name={icon} size={16} color={color} />
+        <Text style={mc.title}>{title}</Text>
+        <Text style={[mc.latest, { color }]}>
+          {latest.value}{unit}
+        </Text>
+      </View>
+      <MetricLineChart data={data} color={color} domain={domain} />
+    </View>
+  );
+}
+const mc = StyleSheet.create({
+  card:    { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm, ...Shadows.card },
+  header:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  title:   { ...Typography.label, color: Colors.textSecondary, flex: 1, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
+  latest:  { ...Typography.h3, fontWeight: '700' },
+});
+
+// ─── Number input row ─────────────────────────────────────────────────────────
+function MetricInput({ label, value, onChange, unit, placeholder, decimal, max }) {
+  return (
+    <View style={mi.row}>
+      <Text style={mi.label}>{label}</Text>
+      <View style={mi.inputWrap}>
         <TextInput
-          style={s.metricInput}
+          style={mi.input}
           value={value}
-          onChangeText={onChange}
+          onChangeText={t => {
+            // Allow digits, one decimal point (if decimal mode)
+            let clean = decimal ? t.replace(/[^0-9.]/g, '') : t.replace(/[^0-9]/g, '');
+            // Prevent multiple decimal points
+            const parts = clean.split('.');
+            if (parts.length > 2) clean = parts[0] + '.' + parts.slice(1).join('');
+            // Limit decimal places
+            if (decimal && parts[1]?.length > 1) clean = parts[0] + '.' + parts[1].slice(0, 1);
+            // Clamp max
+            if (max != null && parseFloat(clean) > max) clean = String(max);
+            onChange(clean);
+          }}
           keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
           placeholder={placeholder}
           placeholderTextColor={Colors.textMuted}
           selectTextOnFocus
         />
-        <Text style={s.metricUnit}>{unit}</Text>
       </View>
+      <Text style={mi.unit}>{unit}</Text>
     </View>
   );
 }
+const mi = StyleSheet.create({
+  row:      { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  label:    { ...Typography.body, color: Colors.textPrimary, width: 58 },
+  inputWrap:{ flex: 1, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md },
+  input:    { height: 44, paddingHorizontal: Spacing.md, ...Typography.h3, color: Colors.textPrimary, textAlign: 'center' },
+  unit:     { ...Typography.body, color: Colors.textSecondary, width: 32 },
+});
 
-// ─── Chart card ───────────────────────────────────────────────────────────────
-function ChartCard({ title, icon, color, children }) {
-  return (
-    <View style={s.chartCard}>
-      <View style={s.chartHeader}>
-        <Ionicons name={icon} size={16} color={color} />
-        <Text style={[s.chartTitle, { color }]}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
-}
-
-// ─── Build chart data (last 16 weeks) ─────────────────────────────────────────
-function buildChartData(metrics) {
-  const map = {};
-  metrics.forEach(m => { map[m.week_date] = m; });
-  const weeks = [];
-  for (let i = 15; i >= 0; i--) {
-    const mon = shiftWeek(getWeekMonday(), -i);
-    const m   = map[mon];
-    const d   = new Date(mon + 'T12:00:00Z');
-    const lbl = d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
-    weeks.push({
-      label:    lbl,
-      weight:   m?.weight_kg ?? null,
-      waist:    m?.waist_cm  ?? null,
-      diet:     m?.diet_pct  ?? null,
-    });
-  }
-  return weeks;
-}
-
-// ─── Main screen ───────────────────────────────────────────────────────────────
+// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function MetricsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
-  const [metrics, setMetrics]       = useState([]);
-  const [loading, setLoading]       = useState(true);
+  const thisWeek = getWeekMonday();
+
+  // Form state (strings for controlled inputs)
+  const [weightStr, setWeightStr] = useState('');
+  const [waistStr,  setWaistStr]  = useState('');
+  const [dietStr,   setDietStr]   = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [hasEntry,  setHasEntry]  = useState(false);
+
+  // Chart data — last 16 weeks
+  const [metrics,    setMetrics]    = useState([]);
+  const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving]         = useState(false);
-
-  // Week navigation for the log form
-  const [formWeek, setFormWeek]     = useState(getWeekMonday());
-
-  // Form values (strings for text inputs)
-  const [weight, setWeight] = useState('');
-  const [waist,  setWaist]  = useState('');
-  const [diet,   setDiet]   = useState('');
-
-  const populateForm = useCallback((week, data) => {
-    const entry = data.find(m => m.week_date === week);
-    setWeight(entry?.weight_kg != null ? String(entry.weight_kg) : '');
-    setWaist( entry?.waist_cm  != null ? String(entry.waist_cm)  : '');
-    setDiet(  entry?.diet_pct  != null ? String(entry.diet_pct)  : '');
-  }, []);
 
   const load = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
-    const { data } = await supabase
-      .from('weekly_metrics')
-      .select('week_date, weight_kg, waist_cm, diet_pct')
-      .order('week_date', { ascending: false })
-      .limit(52);
-    if (data) {
-      setMetrics(data);
-      populateForm(formWeek, data);
+    try {
+      const { data: { session: auth } } = await supabase.auth.getSession();
+      if (!auth) return;
+
+      // Fetch last 16 weeks of metrics (most-recent-first then reverse for chart)
+      const { data, error } = await supabase
+        .from('body_metrics')
+        .select('week_date, weight_kg, waist_cm, diet_pct')
+        .eq('user_id', auth.user.id)
+        .order('week_date', { ascending: false })
+        .limit(16);
+
+      if (error) { console.warn('[Metrics] fetch error:', error.message); return; }
+
+      const sorted = (data ?? []).slice().reverse(); // oldest → newest
+      setMetrics(sorted);
+
+      // Pre-fill form if this week already has an entry
+      const thisEntry = (data ?? []).find(r => r.week_date === thisWeek);
+      if (thisEntry) {
+        setHasEntry(true);
+        setWeightStr(thisEntry.weight_kg != null ? String(thisEntry.weight_kg) : '');
+        setWaistStr( thisEntry.waist_cm  != null ? String(thisEntry.waist_cm)  : '');
+        setDietStr(  thisEntry.diet_pct  != null ? String(thisEntry.diet_pct)  : '');
+      } else {
+        setHasEntry(false);
+      }
+    } catch (e) {
+      console.warn('[Metrics] load error:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
-  }, [formWeek, populateForm]);
+  }, [thisWeek]);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
-
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const changeWeek = (delta) => {
-    const next = shiftWeek(formWeek, delta);
-    if (delta > 0 && next > getWeekMonday()) return; // can't go into future
-    setFormWeek(next);
-    populateForm(next, metrics);
-  };
-
   const save = async () => {
-    const w = parseFloat(weight);
-    const c = parseFloat(waist);
-    const d = parseInt(diet, 10);
-    if (isNaN(w) && isNaN(c) && isNaN(d)) return;
+    const weight = weightStr ? parseFloat(weightStr) : null;
+    const waist  = waistStr  ? parseFloat(waistStr)  : null;
+    const diet   = dietStr   ? parseInt(dietStr, 10) : null;
+
+    if (weight == null && waist == null && diet == null) {
+      Alert.alert('Nothing to save', 'Enter at least one metric before saving.');
+      return;
+    }
+    if (diet != null && (diet < 0 || diet > 100)) {
+      Alert.alert('Invalid value', 'Diet adherence must be between 0 and 100.');
+      return;
+    }
 
     setSaving(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { setSaving(false); return; }
+    try {
+      const { data: { session: auth } } = await supabase.auth.getSession();
+      if (!auth) return;
 
-    const payload = {
-      user_id:  session.user.id,
-      week_date: formWeek,
-      ...(!isNaN(w) && { weight_kg: w }),
-      ...(!isNaN(c) && { waist_cm: c }),
-      ...(!isNaN(d) && d >= 0 && d <= 100 && { diet_pct: d }),
-    };
+      const { error } = await supabase.from('body_metrics').upsert({
+        user_id:   auth.user.id,
+        week_date: thisWeek,
+        weight_kg: weight != null ? Math.round(weight * 10) / 10 : null,
+        waist_cm:  waist  != null ? Math.round(waist  * 10) / 10 : null,
+        diet_pct:  diet,
+      }, { onConflict: 'user_id,week_date' });
 
-    await supabase.from('weekly_metrics').upsert(payload, { onConflict: 'user_id,week_date' });
-    await load();
-    setSaving(false);
+      if (error) {
+        Alert.alert('Save failed', error.message);
+      } else {
+        setHasEntry(true);
+        load(); // refresh charts
+      }
+    } catch (e) {
+      Alert.alert('Save failed', e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const chartData = buildChartData(metrics);
-  const weightData = chartData.map(d => ({ label: d.label, value: d.weight }));
-  const waistData  = chartData.map(d => ({ label: d.label, value: d.waist }));
-  const dietData   = chartData.map(d => ({ label: d.label, value: d.diet }));
+  // Build chart data arrays
+  const weightData = metrics.filter(r => r.weight_kg != null).map(r => ({ week_date: r.week_date, value: parseFloat(r.weight_kg) }));
+  const waistData  = metrics.filter(r => r.waist_cm  != null).map(r => ({ week_date: r.week_date, value: parseFloat(r.waist_cm)  }));
+  const dietData   = metrics.filter(r => r.diet_pct  != null).map(r => ({ week_date: r.week_date, value: r.diet_pct }));
 
-  const isFuture = formWeek > getWeekMonday();
+  if (loading) return (
+    <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={Colors.primary} size="large" />
+    </View>
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: Colors.background }}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: Colors.background }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Header */}
-      <View style={[s.header, { paddingTop: insets.top + Spacing.sm }]}>
+      <View style={[s.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={s.title}>Body Metrics</Text>
+        <Text style={s.title}>Weekly Metrics</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={Colors.primary} size="large" />
-        </View>
-      ) : (
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={[s.content, { paddingBottom: insets.bottom + Spacing.xl }]}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* ── Log form ── */}
-          <View style={s.logCard}>
-            <Text style={s.sectionTitle}>LOG WEEK</Text>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[s.content, { paddingBottom: insets.bottom + Spacing.xl }]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+      >
+        {/* ── Entry form ── */}
+        <View style={s.section}>
+          <Text style={s.sectionLabel}>
+            This week · {shortDate(thisWeek)}
+            {hasEntry ? '  ✓ Logged' : ''}
+          </Text>
 
-            {/* Week selector */}
-            <View style={s.weekRow}>
-              <TouchableOpacity onPress={() => changeWeek(-1)} style={s.weekArrow}>
-                <Ionicons name="chevron-back" size={22} color={Colors.textPrimary} />
-              </TouchableOpacity>
-              <Text style={s.weekLabel}>{weekLabel(formWeek)}</Text>
-              <TouchableOpacity
-                onPress={() => changeWeek(1)}
-                style={[s.weekArrow, isFuture && { opacity: 0.3 }]}
-                disabled={isFuture}
-              >
-                <Ionicons name="chevron-forward" size={22} color={Colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
+          <View style={s.formCard}>
+            <MetricInput label="Weight" value={weightStr} onChange={setWeightStr} unit="kg" placeholder="82.5" decimal max={999} />
+            <View style={s.divider} />
+            <MetricInput label="Waist"  value={waistStr}  onChange={setWaistStr}  unit="cm" placeholder="91.0" decimal max={999} />
+            <View style={s.divider} />
+            <MetricInput label="Diet"   value={dietStr}   onChange={setDietStr}   unit="%" placeholder="80"    decimal={false} max={100} />
 
-            {/* Inputs */}
-            <MetricInput label="Avg. Weight" value={weight} onChange={setWeight}
-              unit="kg" placeholder="82.5" decimal />
-            <MetricInput label="Waist"  value={waist}  onChange={setWaist}
-              unit="cm" placeholder="91" />
-            <MetricInput label="Diet Adherence" value={diet} onChange={setDiet}
-              unit="%" placeholder="85" />
+            {/* Diet visual bar */}
+            {dietStr && parseInt(dietStr, 10) >= 0 && (
+              <View style={s.dietBarTrack}>
+                <View style={[s.dietBarFill, {
+                  width: `${Math.min(100, parseInt(dietStr, 10) || 0)}%`,
+                  backgroundColor: parseInt(dietStr, 10) >= 80 ? Colors.primary : parseInt(dietStr, 10) >= 50 ? Colors.amber : Colors.danger,
+                }]} />
+              </View>
+            )}
 
             <TouchableOpacity style={s.saveBtn} onPress={save} activeOpacity={0.8} disabled={saving}>
               {saving
                 ? <ActivityIndicator color={Colors.background} size="small" />
                 : <>
                     <Ionicons name="checkmark" size={20} color={Colors.background} />
-                    <Text style={s.saveBtnTxt}>Save Week</Text>
+                    <Text style={s.saveTxt}>{hasEntry ? 'Update This Week' : 'Save This Week'}</Text>
                   </>
               }
             </TouchableOpacity>
           </View>
+        </View>
 
-          {/* ── Charts ── */}
-          <Text style={[s.sectionTitle, { marginTop: Spacing.sm }]}>HISTORY (16 WEEKS)</Text>
+        {/* ── Charts ── */}
+        {weightData.length >= 2 || waistData.length >= 2 || dietData.length >= 2 ? (
+          <View style={s.section}>
+            <Text style={s.sectionLabel}>History</Text>
 
-          <ChartCard title="WEIGHT" icon="scale-outline" color={Colors.primary}>
-            <LineChart data={weightData} color={Colors.primary} unit="kg" />
-          </ChartCard>
-
-          <ChartCard title="WAIST CIRCUMFERENCE" icon="resize-outline" color={Colors.blue}>
-            <LineChart data={waistData} color={Colors.blue} unit="cm" />
-          </ChartCard>
-
-          <ChartCard title="DIET ADHERENCE" icon="nutrition-outline" color={Colors.amber}>
-            <DietBar data={dietData} />
-            <View style={{ flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm }}>
-              {[['#4CAF50','≥ 90%'],[ Colors.amber,'70–89%'],[Colors.danger,'< 70%']].map(([c,l]) => (
-                <View key={l} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                  <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c }} />
-                  <Text style={{ fontSize: 11, color: Colors.textMuted }}>{l}</Text>
-                </View>
-              ))}
+            {weightData.length >= 2 && (
+              <MetricCard
+                title="Weight" icon="barbell-outline"
+                color={Colors.primary} data={weightData} unit=" kg" />
+            )}
+            {waistData.length >= 2 && (
+              <MetricCard
+                title="Waist circumference" icon="resize-outline"
+                color={Colors.blue} data={waistData} unit=" cm" />
+            )}
+            {dietData.length >= 2 && (
+              <MetricCard
+                title="Diet adherence" icon="restaurant-outline"
+                color={Colors.gold} data={dietData} unit="%" domain={[0, 100]} />
+            )}
+          </View>
+        ) : (
+          metrics.length <= 1 && (
+            <View style={s.emptyHint}>
+              <Ionicons name="bar-chart-outline" size={36} color={Colors.textMuted} />
+              <Text style={s.emptyTxt}>Charts appear after 2+ weeks of data</Text>
             </View>
-          </ChartCard>
-        </ScrollView>
-      )}
-    </View>
+          )
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
-  header:    { flexDirection:'row', alignItems:'center', paddingHorizontal:Spacing.md, paddingBottom:Spacing.sm, borderBottomWidth:1, borderBottomColor:Colors.border },
-  backBtn:   { width:40 },
-  title:     { ...Typography.h2, color:Colors.textPrimary, flex:1, textAlign:'center' },
-  content:   { padding:Spacing.md, gap:Spacing.md },
-  sectionTitle: { ...Typography.label, color:Colors.textSecondary, textTransform:'uppercase', letterSpacing:1, fontSize:11 },
+  header:    { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  backBtn:   { width: 40 },
+  title:     { ...Typography.h2, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
+  content:   { padding: Spacing.md, gap: Spacing.lg },
+  section:   { gap: Spacing.sm },
+  sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
 
-  // Log card
-  logCard:   { backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, gap:Spacing.md, ...Shadows.card },
-  weekRow:   { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:Colors.surfaceRaised, borderRadius:Radius.md, paddingVertical:Spacing.xs },
-  weekArrow: { width:40, alignItems:'center', paddingVertical:Spacing.sm },
-  weekLabel: { ...Typography.h3, color:Colors.textPrimary, flex:1, textAlign:'center' },
+  formCard:  { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, gap: Spacing.md, ...Shadows.card },
+  divider:   { height: 1, backgroundColor: Colors.border },
 
-  // Metric input row
-  metricRow:      { flexDirection:'row', alignItems:'center', gap:Spacing.md },
-  metricLabel:    { ...Typography.label, color:Colors.textSecondary, width:120 },
-  metricInputWrap:{ flex:1, flexDirection:'row', alignItems:'center', backgroundColor:Colors.surfaceRaised, borderRadius:Radius.md, paddingHorizontal:Spacing.md, height:44 },
-  metricInput:    { flex:1, ...Typography.h3, color:Colors.textPrimary },
-  metricUnit:     { ...Typography.bodySmall, color:Colors.textSecondary },
+  dietBarTrack: { height: 6, backgroundColor: Colors.surfaceRaised, borderRadius: 3, overflow: 'hidden' },
+  dietBarFill:  { height: '100%', borderRadius: 3 },
 
-  saveBtn:    { height:52, borderRadius:Radius.full, backgroundColor:Colors.primary, flexDirection:'row', alignItems:'center', justifyContent:'center', gap:Spacing.sm },
-  saveBtnTxt: { ...Typography.h3, color:Colors.background, fontWeight:'700' },
+  saveBtn:   { height: 52, borderRadius: Radius.full, backgroundColor: Colors.primary,
+               flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
+  saveTxt:   { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 
-  // Chart card
-  chartCard:   { backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, gap:Spacing.sm, ...Shadows.card },
-  chartHeader: { flexDirection:'row', alignItems:'center', gap:Spacing.xs },
-  chartTitle:  { ...Typography.label, textTransform:'uppercase', letterSpacing:1, fontSize:11, flex:1 },
+  emptyHint: { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
+  emptyTxt:  { ...Typography.body, color: Colors.textMuted, textAlign: 'center' },
 });
