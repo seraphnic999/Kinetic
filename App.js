@@ -16,6 +16,7 @@ import SessionEditorScreen from './src/screens/SessionEditorScreen';
 import TrainingScreen      from './src/screens/TrainingScreen';
 import SummaryScreen       from './src/screens/SummaryScreen';
 import DashboardScreen     from './src/screens/DashboardScreen';
+import MetricsScreen       from './src/screens/MetricsScreen';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -98,6 +99,7 @@ function AppNavigator() {
       <Stack.Screen name="Training"      component={TrainingScreen} />
       <Stack.Screen name="Summary"       component={SummaryScreen} />
       <Stack.Screen name="Dashboard"     component={DashboardScreen} />
+      <Stack.Screen name="Metrics"       component={MetricsScreen} />
     </Stack.Navigator>
   );
 }

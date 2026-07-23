@@ -60,3 +60,21 @@ Run this in the Supabase SQL Editor to add timeline support:
 ALTER TABLE workout_sessions
   ADD COLUMN IF NOT EXISTS timeline JSONB;
 ```
+
+## SQL Migration — weekly metrics
+
+```sql
+CREATE TABLE weekly_metrics (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    UUID REFERENCES auth.users NOT NULL,
+  week_date  DATE NOT NULL,
+  weight_kg  NUMERIC(5,1),
+  waist_cm   NUMERIC(5,1),
+  diet_pct   INTEGER CHECK (diet_pct BETWEEN 0 AND 100),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT unique_user_week UNIQUE (user_id, week_date)
+);
+ALTER TABLE weekly_metrics ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "own metrics" ON weekly_metrics
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+```

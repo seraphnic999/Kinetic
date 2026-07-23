@@ -127,6 +127,13 @@ export default function SessionListScreen({ navigation }) {
             <Ionicons name="bar-chart-outline" size={22} color={Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
+            onPress={() => navigation.navigate('Metrics')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="body-outline" size={22} color={Colors.blue} />
+          </TouchableOpacity>
+          <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.amber }]}
             onPress={() => navigation.navigate('Training', {
               adHoc: true,

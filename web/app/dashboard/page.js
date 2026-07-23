@@ -13,6 +13,8 @@ const C = {
   blue:      '#4A9EFF',
   amber:     '#FFA040',
   gold:      '#FFD700',
+  success:   '#4CAF50',
+  danger:    '#FF4444',
   surface:   '#1C1C1E',
   raised:    '#2C2C2E',
   border:    '#2C2C2E',
@@ -24,6 +26,37 @@ const C = {
 const fmtDate = iso => new Date(iso).toLocaleDateString('en', { month:'short', day:'numeric', year:'numeric' });
 const fmtDur  = s => { const m = Math.floor(s/60); return m<60?`${m}m`:`${Math.floor(m/60)}h ${m%60}m`; };
 const fmtSecs = s => { const m = Math.floor(s/60), sec = s%60; return `${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`; };
+
+// Metrics date helpers
+function getWeekMonday(date = new Date()) {
+  const d = new Date(date); d.setHours(12,0,0,0);
+  const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+function shiftWeek(iso, delta) {
+  const d = new Date(iso + 'T12:00:00Z');
+  d.setDate(d.getDate() + delta * 7);
+  return d.toISOString().slice(0,10);
+}
+function weekLabel(iso) {
+  const mon = new Date(iso + 'T12:00:00Z');
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  const f = d => d.toLocaleDateString('en', { month:'short', day:'numeric' });
+  return `${f(mon)} – ${f(sun)}`;
+}
+function buildMetricChart(metrics, key, weeks = 16) {
+  const map = Object.fromEntries(metrics.map(m => [m.week_date, m]));
+  return Array.from({ length: weeks }, (_, i) => {
+    const mon = shiftWeek(getWeekMonday(), -(weeks - 1 - i));
+    const m   = map[mon];
+    const d   = new Date(mon + 'T12:00:00Z');
+    return {
+      name:  d.toLocaleDateString('en', { month:'short', day:'numeric' }),
+      value: m?.[key] ?? null,
+    };
+  });
+}
 
 const isoWeek = d => {
   const date = new Date(d); date.setHours(12,0,0,0);
@@ -277,23 +310,47 @@ export default function DashboardPage() {
   const [sessions, setSessions]         = useState([]);
   const [stats, setStats]               = useState(null);
   const [charts, setCharts]             = useState(null);
+  const [metrics, setMetrics]           = useState([]);
   const [loading, setLoading]           = useState(true);
   const [userEmail, setUserEmail]       = useState('');
   const [selectedExercise, setSelectedExercise] = useState(null);
+
+  // Metrics log form
+  const [metricWeek, setMetricWeek]     = useState(getWeekMonday());
+  const [mWeight, setMWeight]           = useState('');
+  const [mWaist,  setMWaist]            = useState('');
+  const [mDiet,   setMDiet]             = useState('');
+  const [savingMetrics, setSavingMetrics] = useState(false);
 
   const load = useCallback(async () => {
     const { data: { session: auth } } = await supabase.auth.getSession();
     if (!auth) { router.replace('/login'); return; }
     setUserEmail(auth.user.email ?? '');
 
-    const { data: raw } = await supabase
-      .from('workout_sessions')
-      .select(`id, name, started_at, duration_secs, timeline,
-        workout_exercises(exercise_type,exercise_name,body_section,status,
-          weight_kg,sets_planned,sets_completed,reps,
-          duration_secs,intervals_planned,intervals_done,perf_order)`)
-      .order('started_at', { ascending: false })
-      .limit(100);
+    const [{ data: raw }, { data: metricsData }] = await Promise.all([
+      supabase
+        .from('workout_sessions')
+        .select(`id, name, started_at, duration_secs, timeline,
+          workout_exercises(exercise_type,exercise_name,body_section,status,
+            weight_kg,sets_planned,sets_completed,reps,
+            duration_secs,intervals_planned,intervals_done,perf_order)`)
+        .order('started_at', { ascending: false })
+        .limit(100),
+      supabase
+        .from('weekly_metrics')
+        .select('week_date, weight_kg, waist_cm, diet_pct')
+        .order('week_date', { ascending: false })
+        .limit(52),
+    ]);
+
+    if (metricsData) {
+      setMetrics(metricsData);
+      // Populate form with current week's values
+      const cur = metricsData.find(m => m.week_date === metricWeek);
+      setMWeight(cur?.weight_kg != null ? String(cur.weight_kg) : '');
+      setMWaist( cur?.waist_cm  != null ? String(cur.waist_cm)  : '');
+      setMDiet(  cur?.diet_pct  != null ? String(cur.diet_pct)  : '');
+    }
 
     if (raw) {
       const shaped = raw.map(s=>({
@@ -321,6 +378,33 @@ export default function DashboardPage() {
   useEffect(() => { load(); }, []);   // eslint-disable-line
 
   const signOut = async () => { await supabase.auth.signOut(); router.replace('/login'); };
+
+  const saveMetrics = async (e) => {
+    e.preventDefault();
+    setSavingMetrics(true);
+    const { data: { session: auth } } = await supabase.auth.getSession();
+    if (!auth) { setSavingMetrics(false); return; }
+    const w = parseFloat(mWeight), c = parseFloat(mWaist), d = parseInt(mDiet, 10);
+    const payload = {
+      user_id: auth.user.id, week_date: metricWeek,
+      ...(!isNaN(w) && { weight_kg: w }),
+      ...(!isNaN(c) && { waist_cm: c }),
+      ...(!isNaN(d) && d >= 0 && d <= 100 && { diet_pct: d }),
+    };
+    await supabase.from('weekly_metrics').upsert(payload, { onConflict: 'user_id,week_date' });
+    await load();
+    setSavingMetrics(false);
+  };
+
+  const changeMetricWeek = (delta) => {
+    const next = shiftWeek(metricWeek, delta);
+    if (delta > 0 && next > getWeekMonday()) return;
+    setMetricWeek(next);
+    const cur = metrics.find(m => m.week_date === next);
+    setMWeight(cur?.weight_kg != null ? String(cur.weight_kg) : '');
+    setMWaist( cur?.waist_cm  != null ? String(cur.waist_cm)  : '');
+    setMDiet(  cur?.diet_pct  != null ? String(cur.diet_pct)  : '');
+  };
 
   const progressionData = selectedExercise ? getProgression(sessions, selectedExercise) : [];
   const hasVolume = charts?.volumeData?.some(d=>d.value>0);
@@ -475,6 +559,126 @@ export default function DashboardPage() {
                   {sessions.slice(0,15).map(s=>(
                     <SessionRow key={s.id} session={s} />
                   ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Body Metrics ── */}
+            <div>
+              <h2 className="text-xs uppercase tracking-wider text-secondary mb-4">Body Metrics</h2>
+
+              {/* Log form */}
+              <div className="bg-surface rounded-xl p-5 mb-6">
+                <h3 className="text-sm font-semibold mb-4">Log Week</h3>
+                <form onSubmit={saveMetrics}>
+                  {/* Week selector */}
+                  <div className="flex items-center gap-3 mb-5 bg-raised rounded-lg px-2 py-1">
+                    <button type="button" onClick={()=>changeMetricWeek(-1)} className="p-2 text-secondary hover:text-white transition">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+                      </svg>
+                    </button>
+                    <span className="flex-1 text-center text-sm font-medium">{weekLabel(metricWeek)}</span>
+                    <button type="button" onClick={()=>changeMetricWeek(1)}
+                      disabled={shiftWeek(metricWeek,1) > getWeekMonday()}
+                      className="p-2 text-secondary hover:text-white transition disabled:opacity-30">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Avg. Weight</label>
+                      <div className="flex items-center bg-raised rounded-lg px-3 h-11">
+                        <input type="number" step="0.1" value={mWeight} onChange={e=>setMWeight(e.target.value)}
+                          className="flex-1 bg-transparent text-white outline-none text-sm"
+                          placeholder="82.5" />
+                        <span className="text-muted text-sm">kg</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Waist</label>
+                      <div className="flex items-center bg-raised rounded-lg px-3 h-11">
+                        <input type="number" step="0.5" value={mWaist} onChange={e=>setMWaist(e.target.value)}
+                          className="flex-1 bg-transparent text-white outline-none text-sm"
+                          placeholder="91" />
+                        <span className="text-muted text-sm">cm</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Diet Adherence</label>
+                      <div className="flex items-center bg-raised rounded-lg px-3 h-11">
+                        <input type="number" min="0" max="100" step="5" value={mDiet} onChange={e=>setMDiet(e.target.value)}
+                          className="flex-1 bg-transparent text-white outline-none text-sm"
+                          placeholder="85" />
+                        <span className="text-muted text-sm">%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button type="submit" disabled={savingMetrics}
+                    className="w-full sm:w-auto px-6 h-10 bg-primary text-bg font-semibold rounded-full hover:opacity-90 transition disabled:opacity-50 text-sm">
+                    {savingMetrics ? 'Saving…' : '✓ Save Week'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Three metric charts */}
+              <div className="grid md:grid-cols-3 gap-5">
+                {/* Weight */}
+                <div className="bg-surface rounded-xl p-5">
+                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.primary}}>⚖ Weight (kg)</h3>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={buildMetricChart(metrics,'weight_kg')}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={36} tickFormatter={v=>`${v}kg`} domain={['auto','auto']}/>
+                      <Tooltip formatter={(v)=>[`${v} kg`,'Weight']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Line type="monotone" dataKey="value" stroke={C.primary} strokeWidth={2} dot={{fill:C.primary,r:4,strokeWidth:2,stroke:'#0D0D0D'}} connectNulls={false}/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Waist */}
+                <div className="bg-surface rounded-xl p-5">
+                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.blue}}>📏 Waist (cm)</h3>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={buildMetricChart(metrics,'waist_cm')}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={36} tickFormatter={v=>`${v}cm`} domain={['auto','auto']}/>
+                      <Tooltip formatter={(v)=>[`${v} cm`,'Waist']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Line type="monotone" dataKey="value" stroke={C.blue} strokeWidth={2} dot={{fill:C.blue,r:4,strokeWidth:2,stroke:'#0D0D0D'}} connectNulls={false}/>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Diet */}
+                <div className="bg-surface rounded-xl p-5">
+                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.amber}}>🥗 Diet Adherence (%)</h3>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={buildMetricChart(metrics,'diet_pct')} barSize={10}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={28} domain={[0,100]} tickFormatter={v=>`${v}%`}/>
+                      <Tooltip formatter={(v)=>[v!=null?`${v}%`:'—','Diet']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Bar dataKey="value" radius={[3,3,0,0]}>
+                        {buildMetricChart(metrics,'diet_pct').map((d,i)=>(
+                          <Cell key={i} fill={d.value==null?C.raised:d.value>=90?C.success:d.value>=70?C.amber:C.danger+'CC'}/>
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="flex gap-4 mt-2">
+                    {[[C.success,'≥ 90%'],[C.amber,'70–89%'],[C.danger,'< 70%']].map(([c,l])=>(
+                      <div key={l} className="flex items-center gap-1">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor:c}}/>
+                        <span className="text-xs text-muted">{l}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
