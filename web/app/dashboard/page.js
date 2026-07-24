@@ -58,6 +58,33 @@ function buildMetricChart(metrics, key, weeks = 16) {
   });
 }
 
+// Build weekly training count from session list
+function buildWeeklyMetric(sessions, weeks = 16) {
+  const countByWeek = {};
+  sessions.forEach(s => {
+    const mon = getWeekMonday(new Date(s.started_at));
+    countByWeek[mon] = (countByWeek[mon] ?? 0) + 1;
+  });
+  return Array.from({ length: weeks }, (_, i) => {
+    const mon = shiftWeek(getWeekMonday(), -(weeks - 1 - i));
+    const d   = new Date(mon + 'T12:00:00Z');
+    return {
+      name:  d.toLocaleDateString('en', { month:'short', day:'numeric' }),
+      value: countByWeek[mon] ?? 0,
+    };
+  });
+}
+
+// Lookup session count for any week (used for "this week" display)
+function makeSessionCountMap(sessions) {
+  const m = {};
+  sessions.forEach(s => {
+    const mon = getWeekMonday(new Date(s.started_at));
+    m[mon] = (m[mon] ?? 0) + 1;
+  });
+  return m;
+}
+
 const isoWeek = d => {
   const date = new Date(d); date.setHours(12,0,0,0);
   date.setDate(date.getDate() + 4 - (date.getDay()||7));
@@ -314,6 +341,7 @@ export default function DashboardPage() {
   const [loading, setLoading]           = useState(true);
   const [userEmail, setUserEmail]       = useState('');
   const [selectedExercise, setSelectedExercise] = useState(null);
+  const [metricPeriod, setMetricPeriod] = useState(5); // weeks: 5=1M, 26=6M, 52=12M
 
   // Metrics log form
   const [metricWeek, setMetricWeek]     = useState(getWeekMonday());
@@ -408,6 +436,7 @@ export default function DashboardPage() {
 
   const progressionData = selectedExercise ? getProgression(sessions, selectedExercise) : [];
   const hasVolume = charts?.volumeData?.some(d=>d.value>0);
+  const sessionCountByWeek = makeSessionCountMap(sessions);
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
@@ -563,122 +592,148 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* ── Body Metrics ── */}
+            {/* ── Weekly Metrics ── */}
             <div>
-              <h2 className="text-xs uppercase tracking-wider text-secondary mb-4">Body Metrics</h2>
+              <h2 className="text-xs uppercase tracking-wider text-secondary mb-4">Weekly Metrics</h2>
+
+              {/* Period selector */}
+              {(() => {
+                const PERIODS = [
+                  { label: '1 Month',   weeks: 5  },
+                  { label: '6 Months',  weeks: 26 },
+                  { label: '12 Months', weeks: 52 },
+                ];
+                return null; // defined below via state
+              })()}
 
               {/* Log form */}
               <div className="bg-surface rounded-xl p-5 mb-6">
-                <h3 className="text-sm font-semibold mb-4">Log Week</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold">Log This Week</h3>
+                  <span className="text-xs text-muted">{weekLabel(metricWeek)}</span>
+                </div>
                 <form onSubmit={saveMetrics}>
-                  {/* Week selector */}
-                  <div className="flex items-center gap-3 mb-5 bg-raised rounded-lg px-2 py-1">
-                    <button type="button" onClick={()=>changeMetricWeek(-1)} className="p-2 text-secondary hover:text-white transition">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
-                      </svg>
-                    </button>
-                    <span className="flex-1 text-center text-sm font-medium">{weekLabel(metricWeek)}</span>
-                    <button type="button" onClick={()=>changeMetricWeek(1)}
-                      disabled={shiftWeek(metricWeek,1) > getWeekMonday()}
-                      className="p-2 text-secondary hover:text-white transition disabled:opacity-30">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
-                      </svg>
-                    </button>
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
                     <div>
-                      <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Avg. Weight</label>
+                      <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Weight</label>
                       <div className="flex items-center bg-raised rounded-lg px-3 h-11">
                         <input type="number" step="0.1" value={mWeight} onChange={e=>setMWeight(e.target.value)}
-                          className="flex-1 bg-transparent text-white outline-none text-sm"
-                          placeholder="82.5" />
-                        <span className="text-muted text-sm">kg</span>
+                          className="flex-1 bg-transparent text-white outline-none text-sm" placeholder="82.5" />
+                        <span className="text-muted text-sm ml-2">kg</span>
                       </div>
                     </div>
                     <div>
                       <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Waist</label>
                       <div className="flex items-center bg-raised rounded-lg px-3 h-11">
                         <input type="number" step="0.5" value={mWaist} onChange={e=>setMWaist(e.target.value)}
-                          className="flex-1 bg-transparent text-white outline-none text-sm"
-                          placeholder="91" />
-                        <span className="text-muted text-sm">cm</span>
+                          className="flex-1 bg-transparent text-white outline-none text-sm" placeholder="91" />
+                        <span className="text-muted text-sm ml-2">cm</span>
                       </div>
                     </div>
                     <div>
                       <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Diet Adherence</label>
                       <div className="flex items-center bg-raised rounded-lg px-3 h-11">
                         <input type="number" min="0" max="100" step="5" value={mDiet} onChange={e=>setMDiet(e.target.value)}
-                          className="flex-1 bg-transparent text-white outline-none text-sm"
-                          placeholder="85" />
-                        <span className="text-muted text-sm">%</span>
+                          className="flex-1 bg-transparent text-white outline-none text-sm" placeholder="80" />
+                        <span className="text-muted text-sm ml-2">%</span>
                       </div>
                     </div>
                   </div>
-
                   <button type="submit" disabled={savingMetrics}
-                    className="w-full sm:w-auto px-6 h-10 bg-primary text-bg font-semibold rounded-full hover:opacity-90 transition disabled:opacity-50 text-sm">
-                    {savingMetrics ? 'Saving…' : '✓ Save Week'}
+                    className="px-6 h-10 bg-primary text-bg font-semibold rounded-full hover:opacity-90 transition disabled:opacity-50 text-sm">
+                    {savingMetrics ? 'Saving…' : '✓ Save This Week'}
                   </button>
                 </form>
               </div>
 
-              {/* Three metric charts */}
-              <div className="grid md:grid-cols-3 gap-5">
+              {/* Period selector tabs */}
+              <div className="flex gap-2 mb-5">
+                {[{l:'1 Month',w:5},{l:'6 Months',w:26},{l:'12 Months',w:52}].map(({l,w},i)=>(
+                  <button key={l} onClick={()=>setMetricPeriod(w)}
+                    className={`px-4 py-1.5 rounded-full text-sm transition font-medium ${
+                      metricPeriod===w ? 'bg-primary text-bg' : 'bg-raised text-secondary hover:text-white'
+                    }`}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+
+              {/* Charts grid */}
+              <div className="grid md:grid-cols-2 gap-5">
+                {/* Weekly Trainings */}
+                <div className="bg-surface rounded-xl p-5">
+                  <h3 className="text-xs uppercase tracking-wider text-secondary mb-1">Weekly Trainings</h3>
+                  <p className="text-2xl font-bold text-primary mb-4">
+                    {sessionCountByWeek[getWeekMonday()] ?? 0}
+                    <span className="text-sm font-normal text-secondary ml-1">this week</span>
+                  </p>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={buildWeeklyMetric(sessions, metricPeriod)} barSize={metricPeriod<=5?20:metricPeriod<=26?8:4}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={20} allowDecimals={false}/>
+                      <Tooltip formatter={v=>[`${v} session${v!==1?'s':''}`,'Trainings']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Bar dataKey="value" radius={[3,3,0,0]} fill={C.primary}/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Diet Adherence */}
+                <div className="bg-surface rounded-xl p-5">
+                  <h3 className="text-xs uppercase tracking-wider text-secondary mb-1">Diet Adherence</h3>
+                  {(() => { const l=metrics.filter(m=>m.diet_pct!=null).at(-1); return l ? (
+                    <p className="text-2xl font-bold mb-4" style={{color:l.diet_pct>=80?C.primary:l.diet_pct>=50?C.amber:C.danger}}>
+                      {l.diet_pct}%
+                    </p>) : <p className="text-2xl font-bold text-muted mb-4">—</p>; })()}
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={buildMetricChart(metrics,'diet_pct',metricPeriod)} barSize={metricPeriod<=5?20:metricPeriod<=26?8:4}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
+                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={28} domain={[0,100]} tickFormatter={v=>`${v}%`}/>
+                      <Tooltip formatter={(v)=>[v!=null?`${v}%`:'—','Diet']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Bar dataKey="value" radius={[3,3,0,0]}>
+                        {buildMetricChart(metrics,'diet_pct',metricPeriod).map((d,i)=>(
+                          <Cell key={i} fill={d.value==null?C.raised:d.value>=80?C.primary:d.value>=50?C.amber:C.danger}/>
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
                 {/* Weight */}
                 <div className="bg-surface rounded-xl p-5">
-                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.primary}}>⚖ Weight (kg)</h3>
+                  <h3 className="text-xs uppercase tracking-wider text-secondary mb-1">Weight</h3>
+                  {(() => { const l=metrics.filter(m=>m.weight_kg!=null).at(-1); return l ? (
+                    <p className="text-2xl font-bold text-blue mb-4">{l.weight_kg} kg</p>
+                  ) : <p className="text-2xl font-bold text-muted mb-4">—</p>; })()}
                   <ResponsiveContainer width="100%" height={160}>
-                    <LineChart data={buildMetricChart(metrics,'weight_kg')}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <LineChart data={buildMetricChart(metrics,'weight_kg',metricPeriod)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                       <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
-                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={36} tickFormatter={v=>`${v}kg`} domain={['auto','auto']}/>
-                      <Tooltip formatter={(v)=>[`${v} kg`,'Weight']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
-                      <Line type="monotone" dataKey="value" stroke={C.primary} strokeWidth={2} dot={{fill:C.primary,r:4,strokeWidth:2,stroke:'#0D0D0D'}} connectNulls={false}/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={40} tickFormatter={v=>`${v}kg`} domain={['auto','auto']}/>
+                      <Tooltip formatter={v=>[v!=null?`${v} kg`:'—','Weight']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Line type="monotone" dataKey="value" stroke={C.blue} strokeWidth={2} connectNulls={false}
+                        dot={{fill:C.blue,r:4,strokeWidth:2,stroke:'#0D0D0D'}} activeDot={{r:6}}/>
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
 
                 {/* Waist */}
                 <div className="bg-surface rounded-xl p-5">
-                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.blue}}>📏 Waist (cm)</h3>
+                  <h3 className="text-xs uppercase tracking-wider text-secondary mb-1">Waist Circumference</h3>
+                  {(() => { const l=metrics.filter(m=>m.waist_cm!=null).at(-1); return l ? (
+                    <p className="text-2xl font-bold text-amber mb-4">{l.waist_cm} cm</p>
+                  ) : <p className="text-2xl font-bold text-muted mb-4">—</p>; })()}
                   <ResponsiveContainer width="100%" height={160}>
-                    <LineChart data={buildMetricChart(metrics,'waist_cm')}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                    <LineChart data={buildMetricChart(metrics,'waist_cm',metricPeriod)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={C.border}/>
                       <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
-                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={36} tickFormatter={v=>`${v}cm`} domain={['auto','auto']}/>
-                      <Tooltip formatter={(v)=>[`${v} cm`,'Waist']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
-                      <Line type="monotone" dataKey="value" stroke={C.blue} strokeWidth={2} dot={{fill:C.blue,r:4,strokeWidth:2,stroke:'#0D0D0D'}} connectNulls={false}/>
+                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={40} tickFormatter={v=>`${v}cm`} domain={['auto','auto']}/>
+                      <Tooltip formatter={v=>[v!=null?`${v} cm`:'—','Waist']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
+                      <Line type="monotone" dataKey="value" stroke={C.amber} strokeWidth={2} connectNulls={false}
+                        dot={{fill:C.amber,r:4,strokeWidth:2,stroke:'#0D0D0D'}} activeDot={{r:6}}/>
                     </LineChart>
                   </ResponsiveContainer>
-                </div>
-
-                {/* Diet */}
-                <div className="bg-surface rounded-xl p-5">
-                  <h3 className="text-xs uppercase tracking-wider mb-4" style={{color:C.amber}}>🥗 Diet Adherence (%)</h3>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={buildMetricChart(metrics,'diet_pct')} barSize={10}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false}/>
-                      <XAxis dataKey="name" tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} interval="preserveStartEnd"/>
-                      <YAxis tick={{fill:C.muted,fontSize:9}} axisLine={false} tickLine={false} width={28} domain={[0,100]} tickFormatter={v=>`${v}%`}/>
-                      <Tooltip formatter={(v)=>[v!=null?`${v}%`:'—','Diet']} contentStyle={{backgroundColor:C.raised,border:'none',borderRadius:8}}/>
-                      <Bar dataKey="value" radius={[3,3,0,0]}>
-                        {buildMetricChart(metrics,'diet_pct').map((d,i)=>(
-                          <Cell key={i} fill={d.value==null?C.raised:d.value>=90?C.success:d.value>=70?C.amber:C.danger+'CC'}/>
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                  <div className="flex gap-4 mt-2">
-                    {[[C.success,'≥ 90%'],[C.amber,'70–89%'],[C.danger,'< 70%']].map(([c,l])=>(
-                      <div key={l} className="flex items-center gap-1">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor:c}}/>
-                        <span className="text-xs text-muted">{l}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               </div>
             </div>
