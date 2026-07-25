@@ -85,32 +85,21 @@ function makeSessionCountMap(sessions) {
   return m;
 }
 
-const isoWeek = d => {
-  const date = new Date(d); date.setHours(12,0,0,0);
-  date.setDate(date.getDate() + 4 - (date.getDay()||7));
-  const y = date.getFullYear();
-  const w = Math.ceil((((date - new Date(y,0,1))/86400000)+1)/7);
-  return `${y}-W${String(w).padStart(2,'0')}`;
-};
-const weekLabel = isoW => {
-  const [y,w] = isoW.split('-W').map(Number);
-  const jan4 = new Date(y,0,4);
-  const d = new Date(jan4.getTime() + (w-1)*7*86400000 - (jan4.getDay()||7)*86400000 + 86400000);
-  return d.toLocaleDateString('en',{month:'short',day:'numeric'});
-};
+// Workout chart helpers — use getWeekMonday (YYYY-MM-DD) as the week key
+// so they share the same key space as the metrics helpers above.
 const last12Weeks = () => {
-  const weeks=[]; const now = new Date();
-  for(let i=11;i>=0;i--){ const d=new Date(now); d.setDate(d.getDate()-i*7); weeks.push(isoWeek(d)); }
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) weeks.push(shiftWeek(getWeekMonday(), -i));
   return weeks;
 };
 
 // ─── Compute chart data ───────────────────────────────────────────────────────
 function computeCharts(sessions) {
-  const weekKeys  = last12Weeks();
+  const weekKeys  = last12Weeks();  // array of YYYY-MM-DD Mondays
   const freqMap   = Object.fromEntries(weekKeys.map(k=>[k,0]));
   const volumeMap = Object.fromEntries(weekKeys.map(k=>[k,0]));
   sessions.forEach(s => {
-    const wk = isoWeek(s.started_at);
+    const wk = getWeekMonday(new Date(s.started_at));
     if(freqMap[wk]!==undefined) freqMap[wk]++;
     (s.exercises??[]).forEach(e => {
       if(e.exercise_type!=='regular') return;
