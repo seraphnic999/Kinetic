@@ -580,8 +580,10 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+          </>
+        )}
 
-            {/* ── Weekly Metrics ── */}
+        {/* ── Weekly Metrics — always visible, no sessions needed ── */}
             <div>
               <h2 className="text-xs uppercase tracking-wider text-secondary mb-4">Weekly Metrics</h2>
 
@@ -726,8 +728,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-          </>
-        )}
+          </div>
       </main>
     </div>
   );
