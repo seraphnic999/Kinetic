@@ -13,7 +13,7 @@ import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, pl
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { syncWorkout } from '../utils/syncWorkout';
 import { generateId } from '../utils/storage';
-import { EXERCISE_TYPES } from '../data/exercises';
+import { EXERCISE_TYPES, BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
 // ─── Constants ────────────────────────────────────────────────────────────────

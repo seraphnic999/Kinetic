@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { formatTime } from '../utils/time';
@@ -148,10 +148,10 @@ export default function SummaryScreen({ navigation, route }) {
         document.body.appendChild(a); a.click();
         document.body.removeChild(a); URL.revokeObjectURL(url);
       } else {
-        const path = `${FileSystem.cacheDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
+        const file = new File(Paths.cache, filename);
+        file.write(csv);
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: 'Save training report' });
+          await Sharing.shareAsync(file.uri, { mimeType: 'text/csv', dialogTitle: 'Save training report' });
         } else {
           Alert.alert('Sharing not available', 'Cannot open the share sheet on this device.');
         }
