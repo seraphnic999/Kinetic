@@ -946,7 +946,7 @@ export default function TrainingScreen({ navigation, route }) {
   }, [exStates]);
 
   // ─── End session ─────────────────────────────────────────────────────────
-  const doEndSession = useCallback(() => {
+  const doEndSession = useCallback((save = true) => {
     const exs = session?.exercises ?? [];
     const allIds   = exs.map(e => e.id);
     const remaining = allIds.filter(id => !perfOrder.includes(id));
@@ -980,14 +980,22 @@ export default function TrainingScreen({ navigation, route }) {
           return { ...base, plannedReps: ex.reps, completedReps: ex.reps - (st?.repsLeft ?? 0), intervalLengthSecs: ex.intervalLength };
         return base;
       }),
+      saved: save,
     };
 
     playCompleteSound();
     cancelAllTimerNotifications();
-    syncWorkout(summary);
+    if (save) syncWorkout(summary);
     navigatingAway.current = true;
-    navigation.replace('Summary', { summary });
-  }, [elapsedSec, perfOrder, session, startTime, navigation, addEvent]);
+    navigation.replace('Summary', {
+      summary,
+      reusableSession: adHoc ? {
+        exercises: adHocExercises,
+        restTimerSecs: session?.restTimerSecs,
+        suggestedName: session?.name,
+      } : null,
+    });
+  }, [elapsedSec, perfOrder, session, startTime, navigation, addEvent, adHoc, adHocExercises]);
 
   const confirmEnd = useCallback(() => {
     setShowEndConfirm(true);
@@ -1220,22 +1228,29 @@ export default function TrainingScreen({ navigation, route }) {
           <View style={styles.confirmBox}>
             <Text style={styles.confirmTitle}>End Session?</Text>
             <Text style={styles.confirmMsg}>
-              Are you sure you want to end this training session?
+              Save this session to your stats, or discard it — handy for testing or demoing without affecting your history.
             </Text>
+            <TouchableOpacity
+              style={styles.confirmCancelBtn}
+              onPress={() => setShowEndConfirm(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.confirmCancelTxt}>Keep Training</Text>
+            </TouchableOpacity>
             <View style={styles.confirmBtns}>
               <TouchableOpacity
-                style={styles.confirmCancelBtn}
-                onPress={() => setShowEndConfirm(false)}
+                style={styles.confirmDiscardBtn}
+                onPress={() => { setShowEndConfirm(false); doEndSession(false); }}
                 activeOpacity={0.8}
               >
-                <Text style={styles.confirmCancelTxt}>Keep Training</Text>
+                <Text style={styles.confirmDiscardTxt}>Discard</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.confirmEndBtn}
-                onPress={() => { setShowEndConfirm(false); doEndSession(); }}
+                onPress={() => { setShowEndConfirm(false); doEndSession(true); }}
                 activeOpacity={0.8}
               >
-                <Text style={styles.confirmEndTxt}>End Session</Text>
+                <Text style={styles.confirmEndTxt}>Save & End</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1299,17 +1314,23 @@ const styles = StyleSheet.create({
   confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
   confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   confirmCancelBtn: {
-    flex: 1, height: 48, borderRadius: Radius.md,
+    height: 48, borderRadius: Radius.md,
     backgroundColor: Colors.surfaceRaised,
     alignItems: 'center', justifyContent: 'center',
   },
   confirmCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
-  confirmEndBtn: {
+  confirmDiscardBtn: {
     flex: 1, height: 48, borderRadius: Radius.md,
-    backgroundColor: Colors.danger,
+    backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.danger,
     alignItems: 'center', justifyContent: 'center',
   },
-  confirmEndTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
+  confirmDiscardTxt: { ...Typography.h3, color: Colors.danger, fontWeight: '700' },
+  confirmEndBtn: {
+    flex: 1, height: 48, borderRadius: Radius.md,
+    backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  confirmEndTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 
   // Ad-hoc Quick Add FAB
   quickAddFab: {

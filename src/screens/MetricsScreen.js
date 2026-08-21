@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   ActivityIndicator, RefreshControl, Alert, KeyboardAvoidingView, Platform,
@@ -6,37 +6,29 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { supabase } from '../config/supabase';
+import { PickerModal, PickerField } from '../components/PickerModal';
 
-// ─── Week / period helpers ────────────────────────────────────────────────────
-function getWeekMonday(d = new Date()) {
-  const date = new Date(d);
-  const day  = date.getDay();
-  date.setDate(date.getDate() - (day === 0 ? 6 : day - 1));
-  return date.toISOString().slice(0, 10);
-}
-
-function shortDate(iso) {
-  return new Date(iso + 'T12:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' });
-}
-
-function getLastNWeeks(n) {
-  const weeks = [];
-  const today = new Date();
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i * 7);
-    weeks.push(getWeekMonday(d));
-  }
-  return weeks;
-}
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+const todayIso = () => new Date().toISOString().slice(0, 10);
+const shortDate = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en', { month: 'short', day: 'numeric' });
+const longDate  = iso => new Date(iso + 'T12:00:00').toLocaleDateString('en', { weekday: 'short', month: 'short', day: 'numeric' });
 
 const PERIODS = [
-  { key: '1M',  label: '1 Month',   weeks: 5  },
-  { key: '6M',  label: '6 Months',  weeks: 26 },
-  { key: '12M', label: '12 Months', weeks: 52 },
+  { key: '1M',  label: '1 Month',   days: 30  },
+  { key: '6M',  label: '6 Months',  days: 182 },
+  { key: '12M', label: '12 Months', days: 364 },
 ];
+
+// ─── Metric type definitions ─────────────────────────────────────────────────
+const METRICS = {
+  weight: { key: 'weight', label: 'Weight', field: 'weight_kg', unit: 'kg',  color: Colors.blue,  icon: 'body-outline',       decimal: true,  max: 999 },
+  waist:  { key: 'waist',  label: 'Waist',  field: 'waist_cm',  unit: 'cm',  color: Colors.amber, icon: 'resize-outline',     decimal: true,  max: 999 },
+  diet:   { key: 'diet',   label: 'Diet',   field: 'diet_pct',  unit: '%',   color: Colors.gold,  icon: 'restaurant-outline', decimal: false, max: 100 },
+};
+const METRIC_OPTIONS = Object.values(METRICS).map(m => ({ key: m.key, label: m.label }));
 
 // ─── Line chart (pure View, onLayout) ────────────────────────────────────────
 function MetricLineChart({ data, color, domain }) {
@@ -97,7 +89,7 @@ function MetricLineChart({ data, color, domain }) {
         <View style={{ flexDirection: 'row', marginTop: 4 }}>
           {data.map((d, i) => (
             <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              {i % every === 0 && <Text style={lc.xLabel}>{shortDate(d.week_date)}</Text>}
+              {i % every === 0 && <Text style={lc.xLabel}>{shortDate(d.date)}</Text>}
             </View>
           ))}
         </View>
@@ -131,41 +123,6 @@ const cc = StyleSheet.create({
   latest: { ...Typography.h3, fontWeight: '700' },
 });
 
-// ─── Metric input row ─────────────────────────────────────────────────────────
-function MetricInput({ label, value, onChange, unit, placeholder, decimal, max }) {
-  return (
-    <View style={mi.row}>
-      <Text style={mi.label}>{label}</Text>
-      <View style={mi.wrap}>
-        <TextInput
-          style={mi.input}
-          value={value}
-          onChangeText={t => {
-            let s = decimal ? t.replace(/[^0-9.]/g, '') : t.replace(/[^0-9]/g, '');
-            const parts = s.split('.');
-            if (parts.length > 2) s = parts[0] + '.' + parts.slice(1).join('');
-            if (decimal && parts[1]?.length > 1) s = parts[0] + '.' + parts[1].slice(0, 1);
-            if (max != null && parseFloat(s) > max) s = String(max);
-            onChange(s);
-          }}
-          keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
-          placeholder={placeholder}
-          placeholderTextColor={Colors.textMuted}
-          selectTextOnFocus
-        />
-      </View>
-      <Text style={mi.unit}>{unit}</Text>
-    </View>
-  );
-}
-const mi = StyleSheet.create({
-  row:   { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  label: { ...Typography.body, color: Colors.textPrimary, width: 62 },
-  wrap:  { flex: 1, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md },
-  input: { height: 44, paddingHorizontal: Spacing.md, ...Typography.h3, color: Colors.textPrimary, textAlign: 'center' },
-  unit:  { ...Typography.body, color: Colors.textSecondary, width: 32 },
-});
-
 // ─── Period selector ──────────────────────────────────────────────────────────
 function PeriodSelector({ value, onChange }) {
   return (
@@ -193,88 +150,78 @@ const ps = StyleSheet.create({
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function MetricsScreen({ navigation }) {
-  const insets  = useSafeAreaInsets();
-  const thisWeek = getWeekMonday();
+  const insets = useSafeAreaInsets();
 
   // Form state
-  const [weightStr, setWeightStr] = useState('');
-  const [waistStr,  setWaistStr]  = useState('');
-  const [dietStr,   setDietStr]   = useState('');
-  const [saving,    setSaving]    = useState(false);
-  const [hasEntry,  setHasEntry]  = useState(false);
+  const [metricKey, setMetricKey]   = useState('weight');
+  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [valueStr, setValueStr]     = useState('');
+  const [saving, setSaving]         = useState(false);
+  const [showMetricPicker, setShowMetricPicker] = useState(false);
 
   // Data from Supabase
-  const [rawMetrics,   setRawMetrics]  = useState([]);  // body_metrics rows (52 weeks)
-  const [sessionDates, setSessionDates] = useState([]); // started_at strings (all sessions)
+  const [rawMetrics, setRawMetrics] = useState([]); // body_metrics rows
   const [loading,    setLoading]    = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   // Period selector
   const [period, setPeriod] = useState('6M');
 
+  const metric = METRICS[metricKey];
+
   const load = useCallback(async () => {
     try {
       const { data: { session: auth } } = await supabase.auth.getSession();
       if (!auth) return;
 
-      // Fetch up to 52 weeks of manual metrics + all session dates in parallel
-      const [{ data: mData }, { data: sData }] = await Promise.all([
-        supabase.from('body_metrics')
-          .select('week_date, weight_kg, waist_cm, diet_pct')
-          .eq('user_id', auth.user.id)
-          .order('week_date', { ascending: true })
-          .limit(52),
-        supabase.from('workout_sessions')
-          .select('started_at')
-          .eq('user_id', auth.user.id)
-          .order('started_at', { ascending: true }),
-      ]);
+      const { data: mData } = await supabase.from('body_metrics')
+        .select('week_date, weight_kg, waist_cm, diet_pct')
+        .eq('user_id', auth.user.id)
+        .order('week_date', { ascending: true })
+        .limit(400);
 
       if (mData) setRawMetrics(mData);
-      if (sData) setSessionDates(sData.map(s => s.started_at));
-
-      // Pre-fill form if this week has an entry
-      const entry = (mData ?? []).find(r => r.week_date === thisWeek);
-      setHasEntry(!!entry);
-      setWeightStr(entry?.weight_kg != null ? String(entry.weight_kg) : '');
-      setWaistStr( entry?.waist_cm  != null ? String(entry.waist_cm)  : '');
-      setDietStr(  entry?.diet_pct  != null ? String(entry.diet_pct)  : '');
     } catch (e) {
       console.warn('[Metrics] load error:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [thisWeek]);
+  }, []);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const save = async () => {
-    const weight = weightStr ? parseFloat(weightStr) : null;
-    const waist  = waistStr  ? parseFloat(waistStr)  : null;
-    const diet   = dietStr   ? parseInt(dietStr, 10) : null;
+  // Pre-fill the value field whenever the metric type or date changes
+  useEffect(() => {
+    const entry = rawMetrics.find(r => r.week_date === selectedDate);
+    const v = entry?.[metric.field];
+    setValueStr(v != null ? String(v) : '');
+  }, [rawMetrics, selectedDate, metric.field]);
 
-    if (weight == null && waist == null && diet == null) {
-      Alert.alert('Nothing to save', 'Enter at least one metric before saving.'); return;
+  const hasEntryForDate = rawMetrics.some(r => r.week_date === selectedDate && r[metric.field] != null);
+
+  const save = async () => {
+    const value = valueStr ? parseFloat(valueStr) : null;
+    if (value == null) {
+      Alert.alert('Nothing to save', 'Enter a value before saving.'); return;
     }
-    if (diet != null && (diet < 0 || diet > 100)) {
+    if (metric.key === 'diet' && (value < 0 || value > 100)) {
       Alert.alert('Invalid value', 'Diet adherence must be 0–100.'); return;
     }
     setSaving(true);
     try {
       const { data: { session: auth } } = await supabase.auth.getSession();
       if (!auth) return;
+      const rounded = metric.decimal ? Math.round(value * 10) / 10 : Math.round(value);
       const { error } = await supabase.from('body_metrics').upsert({
-        user_id:   auth.user.id,
-        week_date: thisWeek,
-        weight_kg: weight != null ? Math.round(weight * 10) / 10 : null,
-        waist_cm:  waist  != null ? Math.round(waist  * 10) / 10 : null,
-        diet_pct:  diet,
+        user_id:      auth.user.id,
+        week_date:    selectedDate,
+        [metric.field]: rounded,
       }, { onConflict: 'user_id,week_date' });
 
       if (error) Alert.alert('Save failed', error.message);
-      else { setHasEntry(true); load(); }
+      else load();
     } catch (e) {
       Alert.alert('Save failed', e?.message ?? String(e));
     } finally {
@@ -282,33 +229,32 @@ export default function MetricsScreen({ navigation }) {
     }
   };
 
+  const openDatePicker = () => {
+    DateTimePickerAndroid.open({
+      value: new Date(selectedDate + 'T12:00:00'),
+      mode: 'date',
+      maximumDate: new Date(),
+      onValueChange: (event, date) => {
+        if (date) setSelectedDate(date.toISOString().slice(0, 10));
+      },
+    });
+  };
+
   // ── Compute chart data for the selected period ─────────────────────────────
   const periodCfg = PERIODS.find(p => p.key === period);
-  const allWeeks  = getLastNWeeks(periodCfg.weeks); // e.g. last 26 Mondays
-  const periodStart = allWeeks[0];
+  const periodStartDate = new Date();
+  periodStartDate.setDate(periodStartDate.getDate() - periodCfg.days);
+  const periodStart = periodStartDate.toISOString().slice(0, 10);
 
-  // Training count: count sessions per week within the period
-  const trainingByWeek = {};
-  sessionDates.forEach(isoTs => {
-    const wk = getWeekMonday(new Date(isoTs));
-    if (wk >= periodStart) trainingByWeek[wk] = (trainingByWeek[wk] ?? 0) + 1;
-  });
-
-  // Training count for THIS week (shown in form)
-  const thisWeekTrainings = trainingByWeek[thisWeek] ?? 0;
-
-  // Build chart arrays — filter rawMetrics to period, map to week slots
   const metricsInPeriod = rawMetrics.filter(r => r.week_date >= periodStart);
 
   const chartData = {
-    training: allWeeks.map(wk => ({ week_date: wk, value: trainingByWeek[wk] ?? 0 })),
-    weight:   metricsInPeriod.filter(r => r.weight_kg != null).map(r => ({ week_date: r.week_date, value: parseFloat(r.weight_kg) })),
-    waist:    metricsInPeriod.filter(r => r.waist_cm  != null).map(r => ({ week_date: r.week_date, value: parseFloat(r.waist_cm)  })),
-    diet:     metricsInPeriod.filter(r => r.diet_pct  != null).map(r => ({ week_date: r.week_date, value: r.diet_pct })),
+    weight: metricsInPeriod.filter(r => r.weight_kg != null).map(r => ({ date: r.week_date, value: parseFloat(r.weight_kg) })),
+    waist:  metricsInPeriod.filter(r => r.waist_cm  != null).map(r => ({ date: r.week_date, value: parseFloat(r.waist_cm)  })),
+    diet:   metricsInPeriod.filter(r => r.diet_pct  != null).map(r => ({ date: r.week_date, value: r.diet_pct })),
   };
 
-  const hasAnyHistory = chartData.weight.length >= 2 || chartData.waist.length >= 2 ||
-                        chartData.diet.length >= 2   || sessionDates.length >= 2;
+  const hasAnyHistory = chartData.weight.length >= 2 || chartData.waist.length >= 2 || chartData.diet.length >= 2;
 
   if (loading) return (
     <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
@@ -325,7 +271,7 @@ export default function MetricsScreen({ navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={s.title}>Weekly Metrics</Text>
+        <Text style={s.title}>Body Metrics</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -335,36 +281,55 @@ export default function MetricsScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        {/* ── This week entry form ── */}
+        {/* ── Add entry form ── */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>
-            This week · {shortDate(thisWeek)}
-            {hasEntry && <Text style={{ color: Colors.primary }}>  ✓ Logged</Text>}
+            Log a metric
+            {hasEntryForDate && <Text style={{ color: Colors.primary }}>  ✓ Logged</Text>}
           </Text>
 
           <View style={s.formCard}>
-            {/* Training count — auto, not editable */}
-            <View style={mi.row}>
-              <Text style={mi.label}>Trainings</Text>
-              <View style={[mi.wrap, { backgroundColor: 'transparent' }]}>
-                <Text style={[mi.input, { color: thisWeekTrainings > 0 ? Colors.primary : Colors.textMuted, textAlign: 'center', paddingVertical: 10 }]}>
-                  {thisWeekTrainings}
-                </Text>
-              </View>
-              <Text style={mi.unit}>/ wk</Text>
-            </View>
-            <View style={s.divider} />
-            <MetricInput label="Weight" value={weightStr} onChange={setWeightStr} unit="kg"  placeholder="82.5" decimal max={999} />
-            <View style={s.divider} />
-            <MetricInput label="Waist"  value={waistStr}  onChange={setWaistStr}  unit="cm"  placeholder="91.0" decimal max={999} />
-            <View style={s.divider} />
-            <MetricInput label="Diet"   value={dietStr}   onChange={setDietStr}   unit="%"   placeholder="80"   decimal={false} max={100} />
+            <PickerField
+              label="Metric"
+              value={metric.label}
+              placeholder="Select metric..."
+              onPress={() => setShowMetricPicker(true)}
+            />
 
-            {dietStr !== '' && (
+            <TouchableOpacity style={s.dateField} onPress={openDatePicker} activeOpacity={0.7}>
+              <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} />
+              <Text style={s.dateFieldTxt}>{longDate(selectedDate)}</Text>
+              <Text style={s.dateFieldChange}>Change</Text>
+            </TouchableOpacity>
+
+            <View style={mi.row}>
+              <Text style={mi.label}>{metric.label}</Text>
+              <View style={mi.wrap}>
+                <TextInput
+                  style={mi.input}
+                  value={valueStr}
+                  onChangeText={t => {
+                    let val = metric.decimal ? t.replace(/[^0-9.]/g, '') : t.replace(/[^0-9]/g, '');
+                    const parts = val.split('.');
+                    if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+                    if (metric.decimal && parts[1]?.length > 1) val = parts[0] + '.' + parts[1].slice(0, 1);
+                    if (parseFloat(val) > metric.max) val = String(metric.max);
+                    setValueStr(val);
+                  }}
+                  keyboardType={metric.decimal ? 'decimal-pad' : 'number-pad'}
+                  placeholder={metric.key === 'weight' ? '82.5' : metric.key === 'waist' ? '91.0' : '80'}
+                  placeholderTextColor={Colors.textMuted}
+                  selectTextOnFocus
+                />
+              </View>
+              <Text style={mi.unit}>{metric.unit}</Text>
+            </View>
+
+            {metric.key === 'diet' && valueStr !== '' && (
               <View style={s.dietTrack}>
                 <View style={[s.dietFill, {
-                  width: `${Math.min(100, Math.max(0, parseInt(dietStr, 10) || 0))}%`,
-                  backgroundColor: parseInt(dietStr,10) >= 80 ? Colors.primary : parseInt(dietStr,10) >= 50 ? Colors.amber : Colors.danger,
+                  width: `${Math.min(100, Math.max(0, parseInt(valueStr, 10) || 0))}%`,
+                  backgroundColor: parseInt(valueStr, 10) >= 80 ? Colors.primary : parseInt(valueStr, 10) >= 50 ? Colors.amber : Colors.danger,
                 }]} />
               </View>
             )}
@@ -373,7 +338,7 @@ export default function MetricsScreen({ navigation }) {
               {saving
                 ? <ActivityIndicator color={Colors.background} size="small" />
                 : <><Ionicons name="checkmark" size={20} color={Colors.background} />
-                    <Text style={s.saveTxt}>{hasEntry ? 'Update This Week' : 'Save This Week'}</Text></>
+                    <Text style={s.saveTxt}>{hasEntryForDate ? 'Update Entry' : 'Save Entry'}</Text></>
               }
             </TouchableOpacity>
           </View>
@@ -385,14 +350,6 @@ export default function MetricsScreen({ navigation }) {
             <Text style={s.sectionLabel}>History</Text>
             <PeriodSelector value={period} onChange={setPeriod} />
 
-            <ChartCard
-              title="Weekly trainings" icon="barbell-outline"
-              color={Colors.primary}
-              data={chartData.training.filter(d => d.value > 0 || true)} // keep all weeks to show zeroes
-              unit=""
-              latest={thisWeekTrainings}
-              domain={[0, Math.max(...chartData.training.map(d => d.value), 1)]}
-            />
             {chartData.weight.length >= 2 && (
               <ChartCard title="Weight" icon="body-outline" color={Colors.blue}
                 data={chartData.weight} unit=" kg"
@@ -414,10 +371,19 @@ export default function MetricsScreen({ navigation }) {
         {!hasAnyHistory && (
           <View style={s.empty}>
             <Ionicons name="bar-chart-outline" size={40} color={Colors.textMuted} />
-            <Text style={s.emptyTxt}>Charts appear after logging metrics{'\n'}or completing workouts across multiple weeks.</Text>
+            <Text style={s.emptyTxt}>Charts appear after logging the same metric{'\n'}on at least two different days.</Text>
           </View>
         )}
       </ScrollView>
+
+      <PickerModal
+        visible={showMetricPicker}
+        title="Select Metric"
+        options={METRIC_OPTIONS}
+        selected={metricKey}
+        onSelect={setMetricKey}
+        onClose={() => setShowMetricPicker(false)}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -430,11 +396,21 @@ const s = StyleSheet.create({
   section:      { gap: Spacing.sm },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
   formCard:     { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, gap: Spacing.md, ...Shadows.card },
-  divider:      { height: 1, backgroundColor: Colors.border },
+  dateField:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, height: 48, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised, paddingHorizontal: Spacing.md },
+  dateFieldTxt: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
+  dateFieldChange: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '600' },
   dietTrack:    { height: 6, backgroundColor: Colors.surfaceRaised, borderRadius: 3, overflow: 'hidden' },
   dietFill:     { height: '100%', borderRadius: 3 },
   saveBtn:      { height: 52, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
   saveTxt:      { ...Typography.h3, color: Colors.background, fontWeight: '700' },
   empty:        { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
   emptyTxt:     { ...Typography.body, color: Colors.textMuted, textAlign: 'center', lineHeight: 22 },
+});
+
+const mi = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  label: { ...Typography.body, color: Colors.textPrimary, width: 62 },
+  wrap:  { flex: 1, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md },
+  input: { height: 44, paddingHorizontal: Spacing.md, ...Typography.h3, color: Colors.textPrimary, textAlign: 'center' },
+  unit:  { ...Typography.body, color: Colors.textSecondary, width: 32 },
 });

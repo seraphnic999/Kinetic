@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { supabase } from '../config/supabase';
 import { formatTime } from '../utils/time';
+import { PickerModal, PickerField } from '../components/PickerModal';
 
 // ─── Date / format helpers ────────────────────────────────────────────────────
 const fmtDate  = iso => new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' });
@@ -42,20 +43,26 @@ const last12Weeks = () => {
 function computeCharts(sessions) {
   const weekKeys  = last12Weeks();
   const freqMap   = Object.fromEntries(weekKeys.map(k => [k, 0]));
-  const volumeMap = Object.fromEntries(weekKeys.map(k => [k, 0]));
+  const volumeSumMap = Object.fromEntries(weekKeys.map(k => [k, 0]));
 
   sessions.forEach(s => {
     const wk = isoWeek(s.started_at);
     if (freqMap[wk] !== undefined) freqMap[wk]++;
+    // Total volume for THIS session first, then folded into the week's sum —
+    // the week's chart value ends up being the per-session average (below).
+    let sessionVol = 0;
     (s.exercises ?? []).forEach(e => {
       if (e.exercise_type !== 'regular') return;
-      const vol = (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0);
-      if (volumeMap[wk] !== undefined) volumeMap[wk] += vol;
+      sessionVol += (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0);
     });
+    if (volumeSumMap[wk] !== undefined) volumeSumMap[wk] += sessionVol;
   });
 
   const freqData   = weekKeys.map(k => ({ label: weekLabel(k), value: freqMap[k] }));
-  const volumeData = weekKeys.map(k => ({ label: weekLabel(k), value: Math.round(volumeMap[k]) }));
+  const volumeData = weekKeys.map(k => ({
+    label: weekLabel(k),
+    value: freqMap[k] > 0 ? Math.round(volumeSumMap[k] / freqMap[k]) : 0,
+  }));
 
   // Unique regular exercise names
   const nameSet = new Set();
@@ -111,7 +118,7 @@ function BarChart({ data, height = 110, color = Colors.primary, valueFormatter }
 }
 
 // ─── Line Chart (pure View geometry) ─────────────────────────────────────────
-function LineChart({ data, color = Colors.primary }) {
+function LineChart({ data, color = Colors.primary, unit = 'kg' }) {
   const [w, setW] = useState(0);
   if (!data?.length) return null;
 
@@ -164,10 +171,10 @@ function LineChart({ data, color = Colors.primary }) {
         {w > 0 && (
           <>
             <Text style={{ position: 'absolute', right: 0, top: PAD - 8, fontSize: 8, color: Colors.textMuted }}>
-              {max}kg
+              {max}{unit}
             </Text>
             <Text style={{ position: 'absolute', right: 0, bottom: 4, fontSize: 8, color: Colors.textMuted }}>
-              {min}kg
+              {min}{unit}
             </Text>
           </>
         )}
@@ -205,10 +212,13 @@ const st = StyleSheet.create({
 });
 
 // ─── Activity calendar ────────────────────────────────────────────────────────
+const CAL_LABEL_COL = 46;
+const CAL_GAP = 4;
+
 function ActivityCalendar({ sessions }) {
+  const [containerW, setContainerW] = useState(0);
   const today = new Date(); today.setHours(23,59,59,999);
   const activeDays = new Set(sessions.map(s => s.started_at.slice(0,10)));
-  const CELL = 10;
   const totalDays = 70;
   const start = new Date(today); start.setDate(start.getDate() - totalDays + 1); start.setHours(0,0,0,0);
   const dayList = [];
@@ -220,29 +230,40 @@ function ActivityCalendar({ sessions }) {
   const weeks = [];
   for (let w = 0; w < Math.ceil(dayList.length/7); w++) weeks.push(dayList.slice(w*7,(w+1)*7));
 
+  // Cell spans the remaining width evenly across 7 day columns (+ their gaps),
+  // so the grid always fills the card edge-to-edge regardless of screen size.
+  const gridW = Math.max(containerW - CAL_LABEL_COL, 0);
+  const CELL  = gridW > 0 ? Math.floor((gridW - CAL_GAP * 6) / 7) : 0;
+
   return (
-    <View>
-      <View style={{ flexDirection:'row', marginBottom:3, paddingLeft:2 }}>
+    <View onLayout={e => setContainerW(e.nativeEvent.layout.width)}>
+      <View style={{ flexDirection:'row', marginBottom:6 }}>
+        <View style={{ width: CAL_LABEL_COL }} />
         {['M','T','W','T','F','S','S'].map((l,i) => (
-          <Text key={i} style={{ width:CELL+3, fontSize:9, color:Colors.textMuted, textAlign:'center' }}>{l}</Text>
+          <Text key={i} style={{ width:CELL, marginRight: i<6?CAL_GAP:0, fontSize:10, color:Colors.textMuted, textAlign:'center' }}>{l}</Text>
         ))}
       </View>
-      <View style={{ flexDirection:'column' }}>
-        {weeks.map((week,wi) => (
-          <View key={wi} style={{ flexDirection:'row', marginBottom:3 }}>
-            {week.map((day,di) => {
-              const key = day.toISOString().slice(0,10);
-              return (
-                <View key={di} style={{
-                  width:CELL, height:CELL, borderRadius:2, marginRight:3,
-                  backgroundColor: activeDays.has(key) ? Colors.primary : Colors.surfaceRaised,
-                  opacity: day > today ? 0.2 : 1,
-                }} />
-              );
-            })}
-          </View>
-        ))}
-      </View>
+      {CELL > 0 && (
+        <View style={{ flexDirection:'column' }}>
+          {weeks.map((week,wi) => (
+            <View key={wi} style={{ flexDirection:'row', alignItems:'center', marginBottom:CAL_GAP }}>
+              <Text style={{ width: CAL_LABEL_COL, fontSize:9, color:Colors.textMuted }}>
+                {week[0].toLocaleDateString('en', { month:'short', day:'numeric' })}
+              </Text>
+              {week.map((day,di) => {
+                const key = day.toISOString().slice(0,10);
+                return (
+                  <View key={di} style={{
+                    width:CELL, height:CELL, borderRadius:4, marginRight: di<6?CAL_GAP:0,
+                    backgroundColor: activeDays.has(key) ? Colors.primary : Colors.surfaceRaised,
+                    opacity: day > today ? 0.2 : 1,
+                  }} />
+                );
+              })}
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -325,6 +346,7 @@ const cc = StyleSheet.create({
 // ─── Exercise progression: pill selector + line chart ────────────────────────
 function ExerciseProgression({ sessions }) {
   const [selected, setSelected] = useState(null);
+  const [showPicker, setShowPicker] = useState(false);
   const { exerciseNames } = computeCharts(sessions); // just for names
 
   // Build progression data from sessions for the selected exercise
@@ -355,23 +377,22 @@ function ExerciseProgression({ sessions }) {
       icon="trending-up-outline"
       subtitle={selected ? `${progressData.length} sessions` : ''}
     >
-      {/* Pill selector */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: Spacing.md }}>
-        <View style={{ flexDirection:'row', gap:Spacing.xs }}>
-          {exerciseNames.map(name => (
-            <TouchableOpacity
-              key={name}
-              style={[pill.base, selected === name && pill.active]}
-              onPress={() => setSelected(n => n === name ? null : name)}
-              activeOpacity={0.8}
-            >
-              <Text style={[pill.txt, selected === name && pill.activeTxt]} numberOfLines={1}>
-                {name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+      <View style={{ marginBottom: Spacing.md }}>
+        <PickerField
+          label="Exercise"
+          value={selected}
+          placeholder="Select exercise..."
+          onPress={() => setShowPicker(true)}
+        />
+      </View>
+      <PickerModal
+        visible={showPicker}
+        title="Select Exercise"
+        options={exerciseNames}
+        selected={selected}
+        onSelect={setSelected}
+        onClose={() => setShowPicker(false)}
+      />
 
       {selected && progressData.length >= 2 && (
         <LineChart data={progressData} color={Colors.primary} />
@@ -389,12 +410,31 @@ function ExerciseProgression({ sessions }) {
     </ChartCard>
   );
 }
-const pill = StyleSheet.create({
-  base:      { paddingHorizontal:Spacing.md, paddingVertical:Spacing.xs+2, borderRadius:Radius.full, backgroundColor:Colors.surfaceRaised },
-  active:    { backgroundColor:Colors.primary },
-  txt:       { ...Typography.bodySmall, color:Colors.textSecondary },
-  activeTxt: { color:Colors.background, fontWeight:'700' },
-});
+
+// ─── Body metrics: bucket daily entries into weekly averages ─────────────────
+function computeMetricCharts(rows) {
+  const weekKeys = last12Weeks();
+  const fields = ['weight_kg', 'waist_cm', 'diet_pct'];
+  const sums = {}, counts = {};
+  fields.forEach(f => {
+    sums[f] = Object.fromEntries(weekKeys.map(k => [k, 0]));
+    counts[f] = Object.fromEntries(weekKeys.map(k => [k, 0]));
+  });
+
+  rows.forEach(r => {
+    const wk = isoWeek(r.week_date + 'T12:00:00');
+    if (sums.weight_kg[wk] === undefined) return;
+    fields.forEach(f => {
+      if (r[f] != null) { sums[f][wk] += parseFloat(r[f]); counts[f][wk]++; }
+    });
+  });
+
+  const build = f => weekKeys
+    .filter(k => counts[f][k] > 0)
+    .map(k => ({ label: weekLabel(k), value: Math.round((sums[f][k] / counts[f][k]) * 10) / 10 }));
+
+  return { weightData: build('weight_kg'), waistData: build('waist_cm'), dietData: build('diet_pct') };
+}
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen({ navigation }) {
@@ -402,6 +442,7 @@ export default function DashboardScreen({ navigation }) {
   const [sessions, setSessions]     = useState([]);
   const [stats, setStats]           = useState(null);
   const [charts, setCharts]         = useState(null);
+  const [metricCharts, setMetricCharts] = useState(null);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded]     = useState(null);
@@ -413,18 +454,26 @@ export default function DashboardScreen({ navigation }) {
       if (!auth) return;
       setUserEmail(auth.user.email ?? '');
 
-      const { data: raw } = await supabase
-        .from('workout_sessions')
-        .select(`
-          id, name, started_at, duration_secs,
-          workout_exercises (
-            exercise_type, exercise_name, body_section, status,
-            weight_kg, sets_planned, sets_completed, reps,
-            duration_secs, intervals_planned, intervals_done, perf_order
-          )
-        `)
-        .order('started_at', { ascending: false })
-        .limit(60);   // 60 sessions covers plenty of history for charts
+      const [{ data: raw }, { data: metricRows }] = await Promise.all([
+        supabase
+          .from('workout_sessions')
+          .select(`
+            id, name, started_at, duration_secs,
+            workout_exercises (
+              exercise_type, exercise_name, body_section, status,
+              weight_kg, sets_planned, sets_completed, reps,
+              duration_secs, intervals_planned, intervals_done, perf_order
+            )
+          `)
+          .order('started_at', { ascending: false })
+          .limit(60),   // 60 sessions covers plenty of history for charts
+        supabase
+          .from('body_metrics')
+          .select('week_date, weight_kg, waist_cm, diet_pct')
+          .eq('user_id', auth.user.id)
+          .order('week_date', { ascending: true })
+          .limit(400),
+      ]);
 
       if (raw) {
         const shaped = raw.map(s => ({
@@ -440,6 +489,7 @@ export default function DashboardScreen({ navigation }) {
         setStats({ count: shaped.length, totalSecs, activeDays });
         setCharts(computeCharts(shaped));
       }
+      if (metricRows) setMetricCharts(computeMetricCharts(metricRows));
     } catch (e) {
       console.warn('[Dashboard] load error:', e);
     } finally {
@@ -530,7 +580,7 @@ export default function DashboardScreen({ navigation }) {
                 <ChartCard
                   title="TOTAL VOLUME"
                   icon="barbell-outline"
-                  subtitle="kg lifted per week"
+                  subtitle="avg kg per session"
                 >
                   <BarChart
                     data={charts.volumeData}
@@ -542,6 +592,23 @@ export default function DashboardScreen({ navigation }) {
 
               {/* ── Exercise progression ── */}
               <ExerciseProgression sessions={sessions} />
+
+              {/* ── Body metrics (weekly averages) ── */}
+              {metricCharts?.weightData?.length >= 2 && (
+                <ChartCard title="WEIGHT" icon="body-outline" subtitle="weekly avg · kg">
+                  <LineChart data={metricCharts.weightData} color={Colors.blue} />
+                </ChartCard>
+              )}
+              {metricCharts?.waistData?.length >= 2 && (
+                <ChartCard title="WAIST" icon="resize-outline" subtitle="weekly avg · cm">
+                  <LineChart data={metricCharts.waistData} color={Colors.amber} unit="cm" />
+                </ChartCard>
+              )}
+              {metricCharts?.dietData?.length >= 2 && (
+                <ChartCard title="DIET ADHERENCE" icon="restaurant-outline" subtitle="weekly avg · %">
+                  <LineChart data={metricCharts.dietData} color={Colors.gold} unit="%" />
+                </ChartCard>
+              )}
             </View>
 
             {/* ── Recent sessions ── */}

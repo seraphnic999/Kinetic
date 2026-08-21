@@ -38,9 +38,14 @@
       [
         "expo-notifications",
         {
-          "sounds": ["assets/beep_rest.wav", "assets/beep_interval.wav", "assets/beep_complete.wav"]
+          "sounds": [
+            "assets/beep_rest.wav",
+            "assets/beep_interval.wav",
+            "assets/beep_complete.wav"
+          ]
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
