@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   Alert, StatusBar, FlatList, useWindowDimensions, Animated,
   Platform, AppState,
 } from 'react-native';
@@ -460,6 +460,71 @@ const d = StyleSheet.create({
   subSection:{ ...Typography.bodySmall, color: Colors.amber },
 });
 
+// ─── Body section + exercise picker, with free-text "Other" entry ─────────────
+// Shared by the Regular-exercise form and each Combo sub-exercise.
+function ExercisePicker({ value, onChange }) {
+  const { bodySection, name, customBodySection, customName } = value;
+  return (
+    <>
+      <Text style={qam.fieldLabel}>Body Section</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={qam.chipRow}>
+          {BODY_SECTIONS.map(s => (
+            <TouchableOpacity key={s} style={[qam.chip, bodySection === s && qam.chipActive]}
+              onPress={() => onChange({ bodySection: s, name: '', customName: '' })}>
+              <Text style={[qam.chipTxt, bodySection === s && qam.chipActiveTxt]}>{s}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
+
+      {bodySection && bodySection !== 'Other' ? (
+        <>
+          <Text style={qam.fieldLabel}>Exercise</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={qam.chipRow}>
+              {(EXERCISES_BY_SECTION[bodySection] ?? []).map(n => (
+                <TouchableOpacity key={n} style={[qam.chip, name === n && qam.chipActive]}
+                  onPress={() => onChange({ name: n })}>
+                  <Text style={[qam.chipTxt, name === n && qam.chipActiveTxt]}>{n}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+          {name === 'Other' && (
+            <TextInput
+              style={qam.textInput}
+              value={customName}
+              onChangeText={t => onChange({ customName: t })}
+              placeholder="Enter exercise name..."
+              placeholderTextColor={Colors.textMuted}
+            />
+          )}
+        </>
+      ) : bodySection === 'Other' ? (
+        <>
+          <Text style={qam.fieldLabel}>Body Section Name</Text>
+          <TextInput
+            style={qam.textInput}
+            value={customBodySection}
+            onChangeText={t => onChange({ customBodySection: t })}
+            placeholder="e.g. Forearms, Neck, Calves..."
+            placeholderTextColor={Colors.textMuted}
+          />
+          <Text style={qam.fieldLabel}>Exercise Name</Text>
+          <TextInput
+            style={qam.textInput}
+            value={customName}
+            onChangeText={t => onChange({ customName: t })}
+            placeholder="Enter exercise name..."
+            placeholderTextColor={Colors.textMuted}
+          />
+        </>
+      ) : null}
+    </>
+  );
+}
+
 // ─── Quick Add Modal (ad-hoc mode) ───────────────────────────────────────────
 // Simplified exercise builder for adding exercises during an ad-hoc session.
 function QuickAddModal({ exercises, onAdd, onClose }) {
@@ -470,8 +535,11 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   // Form state per type
   const [warmupType, setWarmupType]   = useState('Treadmill');
   const [warmupDur, setWarmupDur]     = useState(180);
-  const [bodySection, setBodySection] = useState('');
-  const [exName, setExName]           = useState('');
+  const emptyEx = () => ({ bodySection: '', name: '', customBodySection: '', customName: '' });
+  const [regEx, setRegEx]             = useState(emptyEx);
+  const updateRegEx = patch => setRegEx(prev => ({ ...prev, ...patch }));
+  const [comboSubs, setComboSubs]     = useState(() => [emptyEx(), emptyEx()]);
+  const updateComboSub = (idx, patch) => setComboSubs(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
   const [weight, setWeight]           = useState(0);
   const [sets, setSets]               = useState(3);
   const [reps, setReps]               = useState(10);
@@ -479,6 +547,16 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   const [ivRun, setIvRun]             = useState(45);
   const [ivWalk, setIvWalk]           = useState(60);
   const [ivTrans, setIvTrans]         = useState(10);
+
+  // An exercise pick is valid once it has a body section + exercise name,
+  // or (for "Other") the free-text fields are actually filled in.
+  const exValid = (ex) => {
+    if (!ex.bodySection) return false;
+    if (ex.bodySection === 'Other') return !!ex.customBodySection.trim() && !!ex.customName.trim();
+    if (!ex.name) return false;
+    if (ex.name === 'Other') return !!ex.customName.trim();
+    return true;
+  };
 
   const hasWarmup = exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
   const hasExercises = exercises.length > 0;
@@ -497,16 +575,18 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
     if (type === EXERCISE_TYPES.WARMUP)
       return onAdd({ id, type, warmupType, duration: warmupDur });
     if (type === EXERCISE_TYPES.REGULAR)
-      return onAdd({ id, type, bodySection, name: exName, weight, sets, reps });
+      return onAdd({ id, type, ...regEx, weight, sets, reps });
     if (type === EXERCISE_TYPES.COMBO)
       return onAdd({ id, type, name: 'Combo', sets,
-        subExercises: [
-          { id: generateId(), bodySection, name: exName },
-          { id: generateId(), bodySection: '', name: '' },
-        ] });
+        subExercises: comboSubs.map(sub => ({ id: generateId(), ...sub })) });
     if (type === EXERCISE_TYPES.INTERVALS)
       return onAdd({ id, type, reps: ivReps, intervalLength: ivRun, walkDuration: ivWalk, transitionDuration: ivTrans });
   };
+
+  const isFormValid =
+    type === EXERCISE_TYPES.REGULAR ? exValid(regEx) :
+    type === EXERCISE_TYPES.COMBO   ? comboSubs.every(exValid) :
+    true;
 
   return (
     <View style={qam.overlay}>
@@ -552,32 +632,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
 
           {step === 'form' && type === EXERCISE_TYPES.REGULAR && (
             <>
-              <Text style={qam.fieldLabel}>Body Section</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={qam.chipRow}>
-                  {BODY_SECTIONS.map(s => (
-                    <TouchableOpacity key={s} style={[qam.chip, bodySection === s && qam.chipActive]}
-                      onPress={() => { setBodySection(s); setExName(''); }}>
-                      <Text style={[qam.chipTxt, bodySection === s && qam.chipActiveTxt]}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-              {bodySection ? (
-                <>
-                  <Text style={qam.fieldLabel}>Exercise</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={qam.chipRow}>
-                      {(EXERCISES_BY_SECTION[bodySection] ?? []).map(n => (
-                        <TouchableOpacity key={n} style={[qam.chip, exName === n && qam.chipActive]}
-                          onPress={() => setExName(n)}>
-                          <Text style={[qam.chipTxt, exName === n && qam.chipActiveTxt]}>{n}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </>
-              ) : null}
+              <ExercisePicker value={regEx} onChange={updateRegEx} />
               <View style={qam.stepperRow}>
                 <Stepper value={weight} onChange={setWeight} min={0} max={500} label="Weight (kg)" />
                 <Stepper value={sets}   onChange={setSets}   min={1} max={99}  label="Sets" />
@@ -588,21 +643,15 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
 
           {step === 'form' && type === EXERCISE_TYPES.COMBO && (
             <>
-              <Text style={qam.fieldLabel}>Body Section (for first sub-exercise)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={qam.chipRow}>
-                  {BODY_SECTIONS.map(s => (
-                    <TouchableOpacity key={s} style={[qam.chip, bodySection === s && qam.chipActive]}
-                      onPress={() => setBodySection(s)}>
-                      <Text style={[qam.chipTxt, bodySection === s && qam.chipActiveTxt]}>{s}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </ScrollView>
-              <Text style={qam.helpTxt}>You can edit sub-exercise details in the training view after adding.</Text>
               <View style={qam.stepperRow}>
-                <Stepper value={sets} onChange={setSets} min={1} max={99} label="Sets" />
+                <Stepper value={sets} onChange={setSets} min={1} max={99} label="Sets (whole combo)" />
               </View>
+              {comboSubs.map((sub, idx) => (
+                <View key={idx} style={qam.subCard}>
+                  <Text style={qam.subCardTitle}>Exercise {idx + 1}</Text>
+                  <ExercisePicker value={sub} onChange={patch => updateComboSub(idx, patch)} />
+                </View>
+              ))}
             </>
           )}
 
@@ -621,10 +670,10 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
 
           {step === 'form' && (
             <TouchableOpacity
-              style={[qam.confirmBtn, (!exName && type === EXERCISE_TYPES.REGULAR) && { opacity: 0.4 }]}
+              style={[qam.confirmBtn, !isFormValid && { opacity: 0.4 }]}
               onPress={confirm}
               activeOpacity={0.8}
-              disabled={type === EXERCISE_TYPES.REGULAR && !exName}
+              disabled={!isFormValid}
             >
               <Ionicons name="checkmark" size={22} color={Colors.background} />
               <Text style={qam.confirmTxt}>Add to Session</Text>
@@ -652,6 +701,11 @@ const qam = StyleSheet.create({
   stepperRow:  { flexDirection: 'row', gap: Spacing.sm },
   timerHint:   { ...Typography.timerMedium, color: Colors.amber, alignSelf: 'flex-end', fontFamily: DIGITAL_FONT, letterSpacing: 2, paddingBottom: 4 },
   helpTxt:     { ...Typography.bodySmall, color: Colors.textMuted, fontStyle: 'italic' },
+  textInput:   { height: 44, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised,
+                 paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.textPrimary },
+  subCard:     { gap: Spacing.sm, backgroundColor: Colors.surfaceNested, borderRadius: Radius.lg,
+                 padding: Spacing.md },
+  subCardTitle:{ ...Typography.label, color: Colors.textSecondary },
   confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
   confirmTxt:  { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 });
