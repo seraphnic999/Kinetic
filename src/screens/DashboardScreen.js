@@ -304,7 +304,12 @@ function exDetail(e) {
   if (e.exercise_type==='regular' && e.weight_kg!=null)
     return `${e.weight_kg}kg × ${e.sets_completed??e.sets_planned??'?'}×${e.reps??'?'}`;
   if (e.exercise_type==='warmup' && e.duration_secs) return formatTime(e.duration_secs);
-  if (e.exercise_type==='intervals') return `${e.intervals_done??'?'}/${e.intervals_planned??'?'} reps`;
+  if (e.exercise_type==='intervals') {
+    const cardioType = e.cardio_type ?? 'intervals';
+    if (cardioType === 'treadmill') return `${e.speed_kmh??'?'}km/h · ${e.incline_pct??0}% · ${formatTime(e.duration_secs??0)}`;
+    if (cardioType === 'stairs')    return `${e.speed_kmh??'?'}km/h · ${formatTime(e.duration_secs??0)}`;
+    return `${e.intervals_done??'?'}/${e.intervals_planned??'?'} reps`;
+  }
   return '';
 }
 const sr = StyleSheet.create({
@@ -462,7 +467,8 @@ export default function DashboardScreen({ navigation }) {
             workout_exercises (
               exercise_type, exercise_name, body_section, status,
               weight_kg, sets_planned, sets_completed, reps,
-              duration_secs, intervals_planned, intervals_done, perf_order
+              duration_secs, intervals_planned, intervals_done, perf_order,
+              cardio_type, speed_kmh, incline_pct
             )
           `)
           .order('started_at', { ascending: false })

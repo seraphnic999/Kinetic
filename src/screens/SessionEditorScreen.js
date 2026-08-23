@@ -8,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
 import { loadSessions, saveSessions, generateId } from '../utils/storage';
-import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES } from '../data/exercises';
+import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES, CARDIO_TYPES, CARDIO_TYPE_LABELS } from '../data/exercises';
 import { formatTime } from '../utils/time';
 
 // ---------- Sub-component: Numeric Stepper ----------
@@ -266,16 +266,43 @@ function WarmupForm({ exercise, onChange }) {
 
 // ---------- Sub-component: Intervals Form ----------
 function IntervalsForm({ exercise, onChange }) {
+  const cardioType = exercise.cardioType ?? CARDIO_TYPES.INTERVALS;
+  const setCardioType = ct => onChange({ ...exercise, cardioType: ct });
+
   return (
     <View style={formStyles.container}>
-      <View style={formStyles.stepperRow}>
-        <Stepper label="Reps"         value={exercise.reps          ?? 8}  onChange={v => onChange({ ...exercise, reps: v })}              min={1}  max={99}  />
-        <Stepper label="Run (sec)"    value={exercise.intervalLength ?? 45} onChange={v => onChange({ ...exercise, intervalLength: v })}    min={5}  max={600} />
+      <Text style={formStyles.fieldLabel}>Cardio Type</Text>
+      <View style={formStyles.chipRow}>
+        {Object.values(CARDIO_TYPES).map(ct => (
+          <TouchableOpacity key={ct} style={[formStyles.chip, cardioType === ct && formStyles.chipActive]}
+            onPress={() => setCardioType(ct)}>
+            <Text style={[formStyles.chipTxt, cardioType === ct && formStyles.chipActiveTxt]}>{CARDIO_TYPE_LABELS[ct]}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
-      <View style={formStyles.stepperRow}>
-        <Stepper label="Walk (sec)"   value={exercise.walkDuration   ?? 60} onChange={v => onChange({ ...exercise, walkDuration: v })}     min={5}  max={600} />
-        <Stepper label="Trans. (sec)" value={exercise.transitionDuration ?? 10} onChange={v => onChange({ ...exercise, transitionDuration: v })} min={0} max={60} />
-      </View>
+
+      {cardioType === CARDIO_TYPES.INTERVALS && (
+        <>
+          <View style={formStyles.stepperRow}>
+            <Stepper label="Reps"         value={exercise.reps          ?? 8}  onChange={v => onChange({ ...exercise, reps: v })}              min={1}  max={99}  />
+            <Stepper label="Run (sec)"    value={exercise.intervalLength ?? 45} onChange={v => onChange({ ...exercise, intervalLength: v })}    min={5}  max={600} />
+          </View>
+          <View style={formStyles.stepperRow}>
+            <Stepper label="Walk (sec)"   value={exercise.walkDuration   ?? 60} onChange={v => onChange({ ...exercise, walkDuration: v })}     min={5}  max={600} />
+            <Stepper label="Trans. (sec)" value={exercise.transitionDuration ?? 10} onChange={v => onChange({ ...exercise, transitionDuration: v })} min={0} max={60} />
+          </View>
+        </>
+      )}
+
+      {(cardioType === CARDIO_TYPES.TREADMILL || cardioType === CARDIO_TYPES.STAIRS) && (
+        <View style={formStyles.stepperRow}>
+          <Stepper label="Length (min)" value={Math.round((exercise.lengthSecs ?? 600) / 60)} onChange={v => onChange({ ...exercise, lengthSecs: v * 60 })} min={1} max={180} />
+          <Stepper label="Speed (km/h)" value={exercise.speedKmh ?? 6} onChange={v => onChange({ ...exercise, speedKmh: v })} min={1} max={30} />
+          {cardioType === CARDIO_TYPES.TREADMILL && (
+            <Stepper label="Incline (%)" value={exercise.inclinePct ?? 0} onChange={v => onChange({ ...exercise, inclinePct: v })} min={0} max={30} />
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -295,6 +322,11 @@ const formStyles = StyleSheet.create({
   },
   selectorValue: { ...Typography.body, color: Colors.textPrimary },
   selectorPlaceholder: { ...Typography.body, color: Colors.textMuted },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  chip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.surfaceRaised },
+  chipActive: { backgroundColor: Colors.primary },
+  chipTxt: { ...Typography.bodySmall, color: Colors.textSecondary },
+  chipActiveTxt: { color: Colors.background, fontWeight: '700' },
   textInput: {
     backgroundColor: Colors.surfaceRaised,
     borderRadius: Radius.md,
@@ -336,7 +368,7 @@ const newWarmup = () => ({
   warmupType: 'Treadmill', duration: 180,
 });
 const newIntervals = () => ({
-  id: generateId(), type: EXERCISE_TYPES.INTERVALS,
+  id: generateId(), type: EXERCISE_TYPES.INTERVALS, cardioType: CARDIO_TYPES.INTERVALS,
   reps: 8, intervalLength: 45, walkDuration: 60, transitionDuration: 10,
 });
 
@@ -457,7 +489,14 @@ export default function SessionEditorScreen({ navigation, route }) {
 
   const getExerciseLabel = (ex) => {
     if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${formatTime(ex.duration ?? 180)}`;
-    if (ex.type === EXERCISE_TYPES.INTERVALS) return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+    if (ex.type === EXERCISE_TYPES.INTERVALS) {
+      const cardioType = ex.cardioType ?? CARDIO_TYPES.INTERVALS;
+      if (cardioType === CARDIO_TYPES.TREADMILL)
+        return `🏃 Treadmill — ${ex.speedKmh ?? 6}km/h • ${ex.inclinePct ?? 0}% incline • ${formatTime(ex.lengthSecs ?? 600)}`;
+      if (cardioType === CARDIO_TYPES.STAIRS)
+        return `🪜 Stairs — ${ex.speedKmh ?? 6}km/h • ${formatTime(ex.lengthSecs ?? 600)}`;
+      return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+    }
     if (ex.type === EXERCISE_TYPES.COMBO) {
       const parts = [...new Set(
         (ex.subExercises ?? []).map(s => s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection).filter(Boolean)
@@ -684,7 +723,7 @@ export default function SessionEditorScreen({ navigation, route }) {
               { type: EXERCISE_TYPES.REGULAR,   icon: 'barbell-outline',   label: 'Regular Exercise',  desc: 'Single exercise with weight, sets & reps' },
               { type: EXERCISE_TYPES.COMBO,     icon: 'git-merge-outline', label: 'Combo Exercise',    desc: 'Two or more exercises, shared set count' },
               { type: EXERCISE_TYPES.WARMUP,    icon: 'flame-outline',     label: 'Warmup',            desc: 'Treadmill or steps — always runs first' },
-              { type: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',     label: 'Intervals',         desc: 'Walk / run intervals — always runs last' },
+              { type: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',     label: 'Cardio',            desc: 'Intervals, treadmill, or stairs — always runs last' },
             ].filter(opt => {
               if (opt.type === EXERCISE_TYPES.WARMUP)    return !exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
               if (opt.type === EXERCISE_TYPES.INTERVALS) return !exercises.some(e => e.type === EXERCISE_TYPES.INTERVALS);

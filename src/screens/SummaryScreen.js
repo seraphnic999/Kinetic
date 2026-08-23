@@ -9,7 +9,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { formatTime } from '../utils/time';
-import { EXERCISE_TYPES } from '../data/exercises';
+import { EXERCISE_TYPES, CARDIO_TYPES } from '../data/exercises';
 import { generateTrainingCsv } from '../utils/generateCsv';
 import { loadSessions, saveSessions, generateId } from '../utils/storage';
 
@@ -61,10 +61,25 @@ function ExerciseRow({ ex, index }) {
         </View>
       )}
 
-      {ex.type === EXERCISE_TYPES.INTERVALS && (
+      {ex.type === EXERCISE_TYPES.INTERVALS && (ex.cardioType ?? CARDIO_TYPES.INTERVALS) === CARDIO_TYPES.INTERVALS && (
         <View style={rowStyles.stats}>
           <StatPill label="Completed" value={`${ex.completedReps}/${ex.plannedReps} reps`} />
           <StatPill label="Interval" value={`${ex.intervalLengthSecs}s`} />
+        </View>
+      )}
+
+      {ex.type === EXERCISE_TYPES.INTERVALS && ex.cardioType === CARDIO_TYPES.TREADMILL && (
+        <View style={rowStyles.stats}>
+          <StatPill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
+          <StatPill label="Speed" value={`${ex.speedKmh}km/h`} />
+          <StatPill label="Incline" value={`${ex.inclinePct ?? 0}%`} />
+        </View>
+      )}
+
+      {ex.type === EXERCISE_TYPES.INTERVALS && ex.cardioType === CARDIO_TYPES.STAIRS && (
+        <View style={rowStyles.stats}>
+          <StatPill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
+          <StatPill label="Speed" value={`${ex.speedKmh}km/h`} />
         </View>
       )}
     </View>

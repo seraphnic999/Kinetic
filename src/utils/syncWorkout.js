@@ -56,12 +56,23 @@ export async function syncWorkout(summary) {
         duration_secs: ex.plannedDurationSecs ?? null,
       };
 
-      if (ex.type === 'intervals') return {
-        ...base,
-        intervals_planned:  ex.plannedReps ?? null,
-        intervals_done:     ex.completedReps ?? null,
-        interval_len_secs:  ex.intervalLengthSecs ?? null,
-      };
+      if (ex.type === 'intervals') {
+        const cardioType = ex.cardioType ?? 'intervals';
+        if (cardioType !== 'intervals') return {
+          ...base,
+          cardio_type:   cardioType,
+          duration_secs: ex.completedDurationSecs ?? ex.plannedDurationSecs ?? null,
+          speed_kmh:     ex.speedKmh ?? null,
+          incline_pct:   cardioType === 'treadmill' ? (ex.inclinePct ?? null) : null,
+        };
+        return {
+          ...base,
+          cardio_type:        cardioType,
+          intervals_planned:  ex.plannedReps ?? null,
+          intervals_done:     ex.completedReps ?? null,
+          interval_len_secs:  ex.intervalLengthSecs ?? null,
+        };
+      }
 
       // combo — store aggregate (individual sub-ex data lives in the session summary)
       return {

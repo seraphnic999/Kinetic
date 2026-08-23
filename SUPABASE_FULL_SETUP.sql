@@ -37,7 +37,13 @@ CREATE TABLE workout_exercises (
   -- Intervals fields
   intervals_planned  INTEGER,
   intervals_done     INTEGER,
-  interval_len_secs  INTEGER
+  interval_len_secs  INTEGER,
+  -- Cardio fields (exercise_type='intervals'; cardio_type discriminates the
+  -- subtype — 'intervals' | 'treadmill' | 'stairs'; NULL = legacy 'intervals'
+  -- row predating this column. Treadmill/stairs reuse duration_secs above.)
+  cardio_type        TEXT,
+  speed_kmh          NUMERIC,
+  incline_pct        NUMERIC
 );
 
 -- ── body_metrics ──────────────────────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, pl
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { syncWorkout } from '../utils/syncWorkout';
 import { generateId } from '../utils/storage';
-import { EXERCISE_TYPES, BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES } from '../data/exercises';
+import { EXERCISE_TYPES, BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, CARDIO_TYPES, CARDIO_TYPE_LABELS } from '../data/exercises';
 import { Stepper } from '../components/Stepper';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -76,10 +76,14 @@ const PHASE_COLOR = {
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+// Cardio subtype, defaulting absent/legacy exercises to 'intervals' so
+// pre-existing saved sessions and synced history keep working unchanged.
+const getCardioType = (ex) => ex?.cardioType ?? CARDIO_TYPES.INTERVALS;
+
 const getExerciseName = (ex) => {
   if (!ex) return '';
   if (ex.type === EXERCISE_TYPES.WARMUP)    return `Warmup — ${ex.warmupType}`;
-  if (ex.type === EXERCISE_TYPES.INTERVALS) return 'Intervals';
+  if (ex.type === EXERCISE_TYPES.INTERVALS) return CARDIO_TYPE_LABELS[getCardioType(ex)];
   if (ex.type === EXERCISE_TYPES.COMBO)     return ex.name || 'Combo';
   return ex.name === 'Other' ? (ex.customName || 'Exercise') : (ex.name || 'Exercise');
 };
@@ -109,8 +113,14 @@ const getExerciseMeta = (ex, st) => {
     return `${ex.subExercises?.length ?? 0} exercises · ${ex.sets} sets`;
   if (ex.type === EXERCISE_TYPES.WARMUP)
     return `${ex.warmupType} · ${ex.duration} min`;
-  if (ex.type === EXERCISE_TYPES.INTERVALS)
+  if (ex.type === EXERCISE_TYPES.INTERVALS) {
+    const cardioType = getCardioType(ex);
+    if (cardioType === CARDIO_TYPES.TREADMILL)
+      return `${ex.speedKmh ?? 6}km/h · ${ex.inclinePct ?? 0}% incline · ${formatTime(ex.lengthSecs ?? 600)}`;
+    if (cardioType === CARDIO_TYPES.STAIRS)
+      return `${ex.speedKmh ?? 6}km/h · ${formatTime(ex.lengthSecs ?? 600)}`;
     return `${ex.reps} reps · ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+  }
   return '';
 };
 
@@ -128,13 +138,24 @@ const initExerciseStates = (exercises) => {
     } else if (ex.type === EXERCISE_TYPES.WARMUP) {
       s[ex.id] = { timeLeft: ex.duration ?? 180, isRunning: false, status: 'pending' };
     } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
-      s[ex.id] = {
-        repsLeft: ex.reps ?? 8, reps: ex.reps ?? 8,
-        intervalLength:     ex.intervalLength     ?? 45,
-        walkDuration:       ex.walkDuration       ?? 60,
-        transitionDuration: ex.transitionDuration ?? 10,
-        phase: null, timeLeft: 0, isRunning: false, status: 'pending',
-      };
+      const cardioType = getCardioType(ex);
+      if (cardioType === CARDIO_TYPES.TREADMILL || cardioType === CARDIO_TYPES.STAIRS) {
+        const totalSecs = ex.lengthSecs ?? 600;
+        s[ex.id] = {
+          cardioType, totalSecs, timeLeft: totalSecs, isRunning: false, status: 'pending',
+          speedKmh: ex.speedKmh ?? 6,
+          ...(cardioType === CARDIO_TYPES.TREADMILL ? { inclinePct: ex.inclinePct ?? 0 } : {}),
+        };
+      } else {
+        s[ex.id] = {
+          cardioType: CARDIO_TYPES.INTERVALS,
+          repsLeft: ex.reps ?? 8, reps: ex.reps ?? 8,
+          intervalLength:     ex.intervalLength     ?? 45,
+          walkDuration:       ex.walkDuration       ?? 60,
+          transitionDuration: ex.transitionDuration ?? 10,
+          phase: null, timeLeft: 0, isRunning: false, status: 'pending',
+        };
+      }
     }
   });
   return s;
@@ -432,6 +453,60 @@ const iv = StyleSheet.create({
   progressFill: { height: '100%', borderRadius: 4 },
 });
 
+// ─── Cardio (Treadmill / Stairs) detail ────────────────────────────────────────
+// A single background-resilient countdown (no phase cycling), modeled on
+// WarmupDetail, with a progress bar and live-adjustable speed/incline.
+function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, onBack }) {
+  const isTreadmill = state.cardioType === CARDIO_TYPES.TREADMILL;
+  const label = isTreadmill ? 'Treadmill' : 'Stairs';
+  const icon  = isTreadmill ? '🏃' : '🪜';
+  const done     = state.status === 'complete';
+  const notStart = state.status === 'pending';
+  const total    = state.totalSecs ?? 600;
+  const progress = notStart ? 0 : Math.min(1, (total - state.timeLeft) / Math.max(total, 1));
+
+  const [trackW, setTrackW] = useState(0);
+
+  return (
+    <View style={d.container}>
+      <Text style={d.name}>{icon} {label}</Text>
+
+      <View style={[iv.phaseBox, { borderColor: Colors.primary }]}>
+        <Text style={[iv.phaseLabel, { color: Colors.primary }]}>
+          {done ? 'DONE' : state.isRunning ? 'RUNNING' : notStart ? 'READY' : 'PAUSED'}
+        </Text>
+        <Text style={[iv.timer, { color: Colors.primary }]}>{formatTime(state.timeLeft)}</Text>
+        <View style={iv.progressTrack} onLayout={e => setTrackW(e.nativeEvent.layout.width)}>
+          <View style={[iv.progressFill, { width: trackW * progress, backgroundColor: Colors.primary }]} />
+        </View>
+      </View>
+
+      <View style={d.stepperRow}>
+        <Stepper size="large" label="SPEED (km/h)" value={state.speedKmh ?? 6} min={1} max={30}
+          onChange={onUpdateSpeed} />
+        {isTreadmill && (
+          <Stepper size="large" label="INCLINE (%)" value={state.inclinePct ?? 0} min={0} max={30}
+            onChange={onUpdateIncline} />
+        )}
+      </View>
+
+      {!done &&
+        <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
+          onPress={onToggle} activeOpacity={0.8}>
+          <Ionicons name={state.isRunning ? 'pause' : 'play'} size={26} color={Colors.background} />
+          <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : notStart ? 'START' : 'RESUME'}</Text>
+        </TouchableOpacity>
+      }
+      {done && <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold}/><Text style={d.doneText}>{label} Complete!</Text></View>}
+
+      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
+        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Text style={d.backTxt}>Back to exercises</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ─── Shared detail styles ─────────────────────────────────────────────────────
 const d = StyleSheet.create({
   container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
@@ -538,15 +613,22 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   const emptyEx = () => ({ bodySection: '', name: '', customBodySection: '', customName: '' });
   const [regEx, setRegEx]             = useState(emptyEx);
   const updateRegEx = patch => setRegEx(prev => ({ ...prev, ...patch }));
-  const [comboSubs, setComboSubs]     = useState(() => [emptyEx(), emptyEx()]);
+  const emptyComboSub = () => ({ ...emptyEx(), weight: 0, reps: 10 });
+  const [comboSubs, setComboSubs]     = useState(() => [emptyComboSub(), emptyComboSub()]);
   const updateComboSub = (idx, patch) => setComboSubs(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
+  const addComboSub    = () => setComboSubs(prev => [...prev, emptyComboSub()]);
+  const removeComboSub = (idx) => setComboSubs(prev => prev.filter((_, i) => i !== idx));
   const [weight, setWeight]           = useState(0);
   const [sets, setSets]               = useState(3);
   const [reps, setReps]               = useState(10);
+  const [cardioSubtype, setCardioSubtype] = useState(CARDIO_TYPES.INTERVALS);
   const [ivReps, setIvReps]           = useState(8);
   const [ivRun, setIvRun]             = useState(45);
   const [ivWalk, setIvWalk]           = useState(60);
   const [ivTrans, setIvTrans]         = useState(10);
+  const [cardioLengthMin, setCardioLengthMin] = useState(10);
+  const [cardioSpeed, setCardioSpeed]         = useState(6);
+  const [cardioIncline, setCardioIncline]     = useState(1);
 
   // An exercise pick is valid once it has a body section + exercise name,
   // or (for "Other") the free-text fields are actually filled in.
@@ -559,13 +641,14 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   };
 
   const hasWarmup = exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
+  const hasCardio = exercises.some(e => e.type === EXERCISE_TYPES.INTERVALS);
   const hasExercises = exercises.length > 0;
 
   const typeOptions = [
     !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'flame-outline', label: 'Warmup', color: Colors.amber },
     { key: EXERCISE_TYPES.REGULAR, icon: 'barbell-outline', label: 'Exercise', color: Colors.primary },
     { key: EXERCISE_TYPES.COMBO,   icon: 'git-merge-outline', label: 'Combo', color: Colors.blue },
-    { key: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',  label: 'Intervals', color: Colors.gold },
+    !hasCardio && { key: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',  label: 'Cardio', color: Colors.gold },
   ].filter(Boolean);
 
   const selectType = (t) => { setType(t); setStep('form'); };
@@ -579,8 +662,12 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
     if (type === EXERCISE_TYPES.COMBO)
       return onAdd({ id, type, name: 'Combo', sets,
         subExercises: comboSubs.map(sub => ({ id: generateId(), ...sub })) });
-    if (type === EXERCISE_TYPES.INTERVALS)
-      return onAdd({ id, type, reps: ivReps, intervalLength: ivRun, walkDuration: ivWalk, transitionDuration: ivTrans });
+    if (type === EXERCISE_TYPES.INTERVALS) {
+      if (cardioSubtype === CARDIO_TYPES.INTERVALS)
+        return onAdd({ id, type, cardioType: cardioSubtype, reps: ivReps, intervalLength: ivRun, walkDuration: ivWalk, transitionDuration: ivTrans });
+      const base = { id, type, cardioType: cardioSubtype, lengthSecs: cardioLengthMin * 60, speedKmh: cardioSpeed };
+      return onAdd(cardioSubtype === CARDIO_TYPES.TREADMILL ? { ...base, inclinePct: cardioIncline } : base);
+    }
   };
 
   const isFormValid =
@@ -648,23 +735,62 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
               </View>
               {comboSubs.map((sub, idx) => (
                 <View key={idx} style={qam.subCard}>
-                  <Text style={qam.subCardTitle}>Exercise {idx + 1}</Text>
+                  <View style={qam.subCardHeader}>
+                    <Text style={qam.subCardTitle}>Exercise {idx + 1}</Text>
+                    {comboSubs.length > 2 && (
+                      <TouchableOpacity onPress={() => removeComboSub(idx)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                        <Ionicons name="close-circle" size={20} color={Colors.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <ExercisePicker value={sub} onChange={patch => updateComboSub(idx, patch)} />
+                  <View style={qam.stepperRow}>
+                    <Stepper value={sub.weight} onChange={v => updateComboSub(idx, { weight: v })} min={0} max={500} label="Weight (kg)" />
+                    <Stepper value={sub.reps}   onChange={v => updateComboSub(idx, { reps: v })}   min={1} max={999} label="Reps" />
+                  </View>
                 </View>
               ))}
+              <TouchableOpacity style={qam.addSubBtn} onPress={addComboSub} activeOpacity={0.8}>
+                <Ionicons name="add" size={18} color={Colors.primary} />
+                <Text style={qam.addSubBtnTxt}>Add Exercise to Combo</Text>
+              </TouchableOpacity>
             </>
           )}
 
           {step === 'form' && type === EXERCISE_TYPES.INTERVALS && (
             <>
-              <View style={qam.stepperRow}>
-                <Stepper value={ivReps}  onChange={setIvReps}  min={1} max={99}  label="Reps" />
-                <Stepper value={ivRun}   onChange={setIvRun}   min={5} max={600} label="Run (sec)" />
+              <Text style={qam.fieldLabel}>Cardio Type</Text>
+              <View style={qam.chipRow}>
+                {Object.values(CARDIO_TYPES).map(ct => (
+                  <TouchableOpacity key={ct} style={[qam.chip, cardioSubtype === ct && qam.chipActive]}
+                    onPress={() => setCardioSubtype(ct)}>
+                    <Text style={[qam.chipTxt, cardioSubtype === ct && qam.chipActiveTxt]}>{CARDIO_TYPE_LABELS[ct]}</Text>
+                  </TouchableOpacity>
+                ))}
               </View>
-              <View style={qam.stepperRow}>
-                <Stepper value={ivWalk}  onChange={setIvWalk}  min={5} max={600} label="Walk (sec)" />
-                <Stepper value={ivTrans} onChange={setIvTrans} min={0} max={60}  label="Trans. (sec)" />
-              </View>
+
+              {cardioSubtype === CARDIO_TYPES.INTERVALS && (
+                <>
+                  <View style={qam.stepperRow}>
+                    <Stepper value={ivReps}  onChange={setIvReps}  min={1} max={99}  label="Reps" />
+                    <Stepper value={ivRun}   onChange={setIvRun}   min={5} max={600} label="Run (sec)" />
+                  </View>
+                  <View style={qam.stepperRow}>
+                    <Stepper value={ivWalk}  onChange={setIvWalk}  min={5} max={600} label="Walk (sec)" />
+                    <Stepper value={ivTrans} onChange={setIvTrans} min={0} max={60}  label="Trans. (sec)" />
+                  </View>
+                </>
+              )}
+
+              {(cardioSubtype === CARDIO_TYPES.TREADMILL || cardioSubtype === CARDIO_TYPES.STAIRS) && (
+                <View style={qam.stepperRow}>
+                  <Stepper value={cardioLengthMin} onChange={setCardioLengthMin} min={1} max={180} label="Length (min)" />
+                  <Stepper value={cardioSpeed}     onChange={setCardioSpeed}     min={1} max={30}  label="Speed (km/h)" />
+                  {cardioSubtype === CARDIO_TYPES.TREADMILL && (
+                    <Stepper value={cardioIncline} onChange={setCardioIncline} min={0} max={30} label="Incline (%)" />
+                  )}
+                </View>
+              )}
             </>
           )}
 
@@ -705,7 +831,11 @@ const qam = StyleSheet.create({
                  paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.textPrimary },
   subCard:     { gap: Spacing.sm, backgroundColor: Colors.surfaceNested, borderRadius: Radius.lg,
                  padding: Spacing.md },
+  subCardHeader:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   subCardTitle:{ ...Typography.label, color: Colors.textSecondary },
+  addSubBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs,
+                 height: 44, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary + '55' },
+  addSubBtnTxt:{ ...Typography.bodySmall, color: Colors.primary, fontWeight: '600' },
   confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
   confirmTxt:  { ...Typography.h3, color: Colors.background, fontWeight: '700' },
 });
@@ -745,9 +875,10 @@ export default function TrainingScreen({ navigation, route }) {
   const [showEndConfirm, setShowEndConfirm] = useState(false);
 
   // Scheduled notification IDs — cancelled when timer completes in-app
-  const restNotifRef      = useRef(null);
-  const warmupNotifRef    = useRef(null);
-  const intervalsNotifRef = useRef(null);
+  const restNotifRef        = useRef(null);
+  const warmupNotifRef      = useRef(null);
+  const intervalsNotifRef   = useRef(null);
+  const cardioLengthNotifRef = useRef(null);
 
   // Rest timer
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
@@ -900,14 +1031,16 @@ export default function TrainingScreen({ navigation, route }) {
     return () => clearInterval(id);
   }, [exStates[warmupEx?.id]?.isRunning]);
 
-  // ─── Intervals timer ─────────────────────────────────────────────────────
-  const intervalsEx = useMemo(() => session?.exercises?.find(e => e.type === EXERCISE_TYPES.INTERVALS), [session]);
+  // ─── Cardio timer (Intervals subtype) ───────────────────────────────────
+  const cardioEx = useMemo(() => session?.exercises?.find(e => e.type === EXERCISE_TYPES.INTERVALS), [session]);
+  const cardioSubtype = getCardioType(cardioEx);
+  const intervalsEx = cardioEx; // kept as an alias below — only used when subtype === 'intervals'
   const intervalsRef = useRef(null);
   const intervalsPhaseEndRef = useRef(null); // absolute ms timestamp current phase is due to end
-  useEffect(() => { if (intervalsEx) intervalsRef.current = exStates[intervalsEx.id]; }, [exStates, intervalsEx]);
+  useEffect(() => { if (cardioEx) intervalsRef.current = exStates[cardioEx.id]; }, [exStates, cardioEx]);
 
   const intervalsTick = useCallback(() => {
-    if (!intervalsEx || intervalsPhaseEndRef.current == null) return;
+    if (!intervalsEx || cardioSubtype !== CARDIO_TYPES.INTERVALS || intervalsPhaseEndRef.current == null) return;
     const cur = intervalsRef.current;
     if (!cur?.isRunning) return;
     const now = Date.now();
@@ -950,11 +1083,41 @@ export default function TrainingScreen({ navigation, route }) {
   }, [intervalsEx, addEvent]);
 
   useEffect(() => {
-    if (!intervalsEx) return;
+    if (!intervalsEx || cardioSubtype !== CARDIO_TYPES.INTERVALS) return;
     if (!exStates[intervalsEx.id]?.isRunning) return;
     const id = setInterval(intervalsTick, 1000);
     return () => clearInterval(id);
-  }, [exStates[intervalsEx?.id]?.isRunning]);
+  }, [exStates[intervalsEx?.id]?.isRunning, cardioSubtype]);
+
+  // ─── Cardio timer (Treadmill / Stairs subtypes) ─────────────────────────
+  // Single background-resilient countdown, anchored to an absolute end
+  // timestamp — mirrors the Warmup timer exactly (no phase cycling needed).
+  const cardioLengthEndRef = useRef(null); // absolute ms timestamp the length is due to end
+
+  const cardioLengthTick = useCallback(() => {
+    if (!cardioEx || cardioSubtype === CARDIO_TYPES.INTERVALS || cardioLengthEndRef.current == null) return;
+    const cur = intervalsRef.current;
+    if (!cur?.isRunning) return;
+    const remaining = Math.max(0, Math.round((cardioLengthEndRef.current - Date.now()) / 1000));
+    if (remaining <= 0) {
+      cancelTimerNotification(cardioLengthNotifRef.current); cardioLengthNotifRef.current = null;
+      addEvent('cardio_length_end', { cardioType: cardioSubtype, exerciseName: getExerciseName(cardioEx) });
+      playRestBeep();
+      cardioLengthEndRef.current = null;
+      setExStates(prev => ({ ...prev, [cardioEx.id]: { ...prev[cardioEx.id], timeLeft: 0, isRunning: false, status: 'complete' } }));
+      addToPerfOrder(cardioEx.id);
+      setSelectedId(null);
+    } else {
+      setExStates(prev => ({ ...prev, [cardioEx.id]: { ...prev[cardioEx.id], timeLeft: remaining } }));
+    }
+  }, [cardioEx, cardioSubtype, addEvent]);
+
+  useEffect(() => {
+    if (!cardioEx || cardioSubtype === CARDIO_TYPES.INTERVALS) return;
+    if (!exStates[cardioEx.id]?.isRunning) return;
+    const id = setInterval(cardioLengthTick, 1000);
+    return () => clearInterval(id);
+  }, [exStates[cardioEx?.id]?.isRunning, cardioSubtype]);
 
   // ─── Resync all timers immediately when returning from background ─────────
   // Android suspends/throttles JS timers while the app isn't foregrounded, so
@@ -970,9 +1133,10 @@ export default function TrainingScreen({ navigation, route }) {
       restTick();
       warmupTick();
       intervalsTick();
+      cardioLengthTick();
     });
     return () => sub.remove();
-  }, [startTime, restTick, warmupTick, intervalsTick]);
+  }, [startTime, restTick, warmupTick, intervalsTick, cardioLengthTick]);
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const addToPerfOrder = useCallback((id) => {
@@ -1030,8 +1194,16 @@ export default function TrainingScreen({ navigation, route }) {
             })) };
         if (ex?.type === EXERCISE_TYPES.WARMUP)
           return { ...base, warmupType: ex.warmupType, plannedDurationSecs: ex.duration ?? 180 };
-        if (ex?.type === EXERCISE_TYPES.INTERVALS)
-          return { ...base, plannedReps: ex.reps, completedReps: ex.reps - (st?.repsLeft ?? 0), intervalLengthSecs: ex.intervalLength };
+        if (ex?.type === EXERCISE_TYPES.INTERVALS) {
+          const cardioType = getCardioType(ex);
+          if (cardioType !== CARDIO_TYPES.INTERVALS)
+            return { ...base, cardioType,
+              plannedDurationSecs: ex.lengthSecs ?? 600,
+              completedDurationSecs: (ex.lengthSecs ?? 600) - (st?.timeLeft ?? ex.lengthSecs ?? 600),
+              speedKmh: st?.speedKmh ?? ex.speedKmh,
+              ...(cardioType === CARDIO_TYPES.TREADMILL ? { inclinePct: st?.inclinePct ?? ex.inclinePct } : {}) };
+          return { ...base, cardioType, plannedReps: ex.reps, completedReps: ex.reps - (st?.repsLeft ?? 0), intervalLengthSecs: ex.intervalLength };
+        }
         return base;
       }),
       saved: save,
@@ -1244,7 +1416,7 @@ export default function TrainingScreen({ navigation, route }) {
                 })}
                 onBack={() => goBack(selectedId)} />
             )}
-            {selectedEx.type === EXERCISE_TYPES.INTERVALS && (
+            {selectedEx.type === EXERCISE_TYPES.INTERVALS && cardioSubtype === CARDIO_TYPES.INTERVALS && (
               <IntervalsDetail exercise={selectedEx} state={selectedState}
                 onToggle={() => setExStates(prev => {
                   const st = prev[selectedId];
@@ -1269,6 +1441,33 @@ export default function TrainingScreen({ navigation, route }) {
                 })}
                 onUpdateReps={v => setExStates(prev => ({
                   ...prev, [selectedId]: { ...prev[selectedId], repsLeft: Math.max(0, v) }
+                }))}
+                onBack={() => goBack(selectedId)} />
+            )}
+            {selectedEx.type === EXERCISE_TYPES.INTERVALS && cardioSubtype !== CARDIO_TYPES.INTERVALS && (
+              <CardioLengthDetail state={selectedState}
+                onToggle={() => setExStates(prev => {
+                  const st = prev[selectedId];
+                  const starting = st.status === 'pending';
+                  const willRun = !st.isRunning;
+                  if (starting) addToPerfOrder(selectedId);
+                  if (willRun) {
+                    cardioLengthEndRef.current = Date.now() + st.timeLeft * 1000;
+                    const label = cardioSubtype === CARDIO_TYPES.TREADMILL ? 'Treadmill' : 'Stairs';
+                    addEvent('cardio_length_start', { cardioType: cardioSubtype, exerciseName: getExerciseName(selectedEx), durationSecs: st.timeLeft });
+                    scheduleTimerNotification(st.timeLeft, `${label} complete! 🏁`, 'beep_rest.wav')
+                      .then(id => { cardioLengthNotifRef.current = id; });
+                  } else {
+                    cancelTimerNotification(cardioLengthNotifRef.current);
+                    cardioLengthNotifRef.current = null;
+                  }
+                  return { ...prev, [selectedId]: { ...st, isRunning: willRun, status: starting ? 'partial' : st.status } };
+                })}
+                onUpdateSpeed={v => setExStates(prev => ({
+                  ...prev, [selectedId]: { ...prev[selectedId], speedKmh: Math.max(0, v) }
+                }))}
+                onUpdateIncline={v => setExStates(prev => ({
+                  ...prev, [selectedId]: { ...prev[selectedId], inclinePct: Math.max(0, v) }
                 }))}
                 onBack={() => goBack(selectedId)} />
             )}

@@ -94,5 +94,21 @@ export const EXERCISE_TYPES = {
   REGULAR:   'regular',
   COMBO:     'combo',
   WARMUP:    'warmup',
+  INTERVALS: 'intervals', // generalized to "Cardio" — see CARDIO_TYPES below
+};
+
+// Cardio subtypes — all stored under EXERCISE_TYPES.INTERVALS, discriminated
+// by the exercise's `cardioType` field. Absent/undefined `cardioType` is
+// treated as 'intervals' everywhere, so pre-existing saved sessions and
+// synced history (which predate this field) keep working unchanged.
+export const CARDIO_TYPES = {
   INTERVALS: 'intervals',
+  TREADMILL: 'treadmill',
+  STAIRS:    'stairs',
+};
+
+export const CARDIO_TYPE_LABELS = {
+  [CARDIO_TYPES.INTERVALS]: 'Intervals',
+  [CARDIO_TYPES.TREADMILL]: 'Treadmill',
+  [CARDIO_TYPES.STAIRS]:    'Stairs',
 };

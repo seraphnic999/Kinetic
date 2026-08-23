@@ -26,8 +26,10 @@ const ACTION_LABEL = {
   rest_end:       'Rest Over',
   set_start:      'Set Started',
   set_done:       'Set Done',
-  interval_phase: 'Interval Phase Change',
-  intervals_done: 'Intervals Complete',
+  interval_phase:     'Interval Phase Change',
+  intervals_done:     'Intervals Complete',
+  cardio_length_start:'Cardio Started',
+  cardio_length_end:  'Cardio Complete',
 };
 
 export function generateTrainingCsv(summary) {
@@ -72,6 +74,7 @@ export function generateTrainingCsv(summary) {
         const total = (ev.repsDone ?? 0) + (ev.repsLeft ?? 0);
         detail = `→ ${ev.phase ?? ''} · Rep ${ev.repsDone ?? '?'}/${total}`;
       }
+      if (ev.action === 'cardio_length_start') detail = ev.durationSecs ? `${formatTime(ev.durationSecs)} planned` : '';
 
       lines.push(row(elapsed, label, exName, bodySec, detail));
     }
@@ -93,9 +96,20 @@ export function generateTrainingCsv(summary) {
       lines.push(row(num, `Warmup — ${ex.warmupType ?? ''}`, 'Warmup', '', status,
         '', '', '', '', formatTime(ex.plannedDurationSecs ?? 0)));
     } else if (ex.type === 'intervals') {
-      lines.push(row(num, 'Intervals', 'Intervals', '', status,
-        ex.completedReps ?? '', ex.plannedReps ?? '', '', '',
-        `${ex.intervalLengthSecs ?? '?'}s run per interval`));
+      const cardioType = ex.cardioType ?? 'intervals';
+      if (cardioType === 'treadmill') {
+        lines.push(row(num, 'Treadmill', 'Cardio', '', status,
+          '', '', '', '',
+          `${ex.speedKmh ?? '?'}km/h · ${ex.inclinePct ?? 0}% incline · ${formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)}`));
+      } else if (cardioType === 'stairs') {
+        lines.push(row(num, 'Stairs', 'Cardio', '', status,
+          '', '', '', '',
+          `${ex.speedKmh ?? '?'}km/h · ${formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)}`));
+      } else {
+        lines.push(row(num, 'Intervals', 'Cardio', '', status,
+          ex.completedReps ?? '', ex.plannedReps ?? '', '', '',
+          `${ex.intervalLengthSecs ?? '?'}s run per interval`));
+      }
     } else if (ex.type === 'combo') {
       lines.push(row(num, ex.name ?? 'Combo', 'Combo', '', status,
         ex.completedSets ?? '', ex.plannedSets ?? '', '', '', ''));
