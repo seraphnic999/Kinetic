@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl,
@@ -8,70 +8,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { supabase } from '../config/supabase';
-import { formatTime } from '../utils/time';
 import { PickerModal, PickerField } from '../components/PickerModal';
-
-// ─── Date / format helpers ────────────────────────────────────────────────────
-const fmtDate  = iso => new Date(iso).toLocaleDateString('en', { month: 'short', day: 'numeric' });
-const fmtDur   = s => { const m = Math.floor(s/60); return m<60?`${m}m`:`${Math.floor(m/60)}h ${m%60}m`; };
-const isoWeek  = d => {          // ISO week key YYYY-Www
-  const date = new Date(d);
-  date.setHours(12,0,0,0);
-  date.setDate(date.getDate() + 4 - (date.getDay()||7));
-  const y = date.getFullYear();
-  const w = Math.ceil((((date - new Date(y,0,1))/86400000)+1)/7);
-  return `${y}-W${String(w).padStart(2,'0')}`;
-};
-const weekLabel = isoW => {      // "Jun 2" label for a week key
-  const [y,w] = isoW.split('-W').map(Number);
-  const jan4 = new Date(y,0,4);
-  const d = new Date(jan4.getTime() + (w-1)*7*86400000 - (jan4.getDay()||7)*86400000 + 86400000);
-  return d.toLocaleDateString('en',{month:'short',day:'numeric'});
-};
-const last12Weeks = () => {
-  const weeks = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i*7);
-    weeks.push(isoWeek(d));
-  }
-  return weeks;
-};
-
-// ─── Compute chart data from sessions ────────────────────────────────────────
-function computeCharts(sessions) {
-  const weekKeys  = last12Weeks();
-  const freqMap   = Object.fromEntries(weekKeys.map(k => [k, 0]));
-  const volumeSumMap = Object.fromEntries(weekKeys.map(k => [k, 0]));
-
-  sessions.forEach(s => {
-    const wk = isoWeek(s.started_at);
-    if (freqMap[wk] !== undefined) freqMap[wk]++;
-    // Total volume for THIS session first, then folded into the week's sum —
-    // the week's chart value ends up being the per-session average (below).
-    let sessionVol = 0;
-    (s.exercises ?? []).forEach(e => {
-      if (e.exercise_type !== 'regular') return;
-      sessionVol += (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0);
-    });
-    if (volumeSumMap[wk] !== undefined) volumeSumMap[wk] += sessionVol;
-  });
-
-  const freqData   = weekKeys.map(k => ({ label: weekLabel(k), value: freqMap[k] }));
-  const volumeData = weekKeys.map(k => ({
-    label: weekLabel(k),
-    value: freqMap[k] > 0 ? Math.round(volumeSumMap[k] / freqMap[k]) : 0,
-  }));
-
-  // Unique regular exercise names
-  const nameSet = new Set();
-  sessions.forEach(s => (s.exercises ?? []).forEach(e => {
-    if (e.exercise_type === 'regular' && e.exercise_name) nameSet.add(e.exercise_name);
-  }));
-
-  return { freqData, volumeData, exerciseNames: [...nameSet].sort() };
-}
+import {
+  fmtDate, fmtDur, fmtVolume,
+  shapeSessions, computeStats, computeCharts, computeProgression, computeMetricCharts,
+  buildCalendar, exerciseDetail, WEEKDAY_LABELS,
+  CALENDAR_DAYS, CHART_WEEKS, SESSION_LIMIT, RECENT_LIMIT,
+} from '../utils/analytics';
 
 // ─── Bar Chart ────────────────────────────────────────────────────────────────
 function BarChart({ data, height = 110, color = Colors.primary, valueFormatter }) {
@@ -206,7 +149,7 @@ function StatCard({ icon, value, label, color = Colors.primary }) {
   );
 }
 const st = StyleSheet.create({
-  card:  { flex:1, backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, alignItems:'center', gap:4, ...Shadows.card },
+  card:  { flexGrow:1, flexBasis:'45%', backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, alignItems:'center', gap:4, ...Shadows.card },
   value: { ...Typography.h2, fontWeight:'700' },
   label: { ...Typography.bodySmall, color:Colors.textSecondary, textAlign:'center' },
 });
@@ -215,20 +158,10 @@ const st = StyleSheet.create({
 const CAL_LABEL_COL = 46;
 const CAL_GAP = 4;
 
+// Rows are whole Sunday → Saturday weeks, labelled with the week's Sunday.
 function ActivityCalendar({ sessions }) {
   const [containerW, setContainerW] = useState(0);
-  const today = new Date(); today.setHours(23,59,59,999);
-  const activeDays = new Set(sessions.map(s => s.started_at.slice(0,10)));
-  const totalDays = 70;
-  const start = new Date(today); start.setDate(start.getDate() - totalDays + 1); start.setHours(0,0,0,0);
-  const dayList = [];
-  for (let i = 0; i < totalDays; i++) {
-    const d = new Date(start); d.setDate(d.getDate() + i); dayList.push(d);
-  }
-  const pad = (dayList[0].getDay() === 0) ? 6 : dayList[0].getDay() - 1;
-  for (let i = 0; i < pad; i++) { const d = new Date(start); d.setDate(d.getDate()-(pad-i)); dayList.unshift(d); }
-  const weeks = [];
-  for (let w = 0; w < Math.ceil(dayList.length/7); w++) weeks.push(dayList.slice(w*7,(w+1)*7));
+  const weeks = buildCalendar(sessions, CALENDAR_DAYS);
 
   // Cell spans the remaining width evenly across 7 day columns (+ their gaps),
   // so the grid always fills the card edge-to-edge regardless of screen size.
@@ -239,7 +172,7 @@ function ActivityCalendar({ sessions }) {
     <View onLayout={e => setContainerW(e.nativeEvent.layout.width)}>
       <View style={{ flexDirection:'row', marginBottom:6 }}>
         <View style={{ width: CAL_LABEL_COL }} />
-        {['M','T','W','T','F','S','S'].map((l,i) => (
+        {WEEKDAY_LABELS.map((l,i) => (
           <Text key={i} style={{ width:CELL, marginRight: i<6?CAL_GAP:0, fontSize:10, color:Colors.textMuted, textAlign:'center' }}>{l}</Text>
         ))}
       </View>
@@ -248,18 +181,15 @@ function ActivityCalendar({ sessions }) {
           {weeks.map((week,wi) => (
             <View key={wi} style={{ flexDirection:'row', alignItems:'center', marginBottom:CAL_GAP }}>
               <Text style={{ width: CAL_LABEL_COL, fontSize:9, color:Colors.textMuted }}>
-                {week[0].toLocaleDateString('en', { month:'short', day:'numeric' })}
+                {week[0].date.toLocaleDateString('en', { month:'short', day:'numeric' })}
               </Text>
-              {week.map((day,di) => {
-                const key = day.toISOString().slice(0,10);
-                return (
-                  <View key={di} style={{
-                    width:CELL, height:CELL, borderRadius:4, marginRight: di<6?CAL_GAP:0,
-                    backgroundColor: activeDays.has(key) ? Colors.primary : Colors.surfaceRaised,
-                    opacity: day > today ? 0.2 : 1,
-                  }} />
-                );
-              })}
+              {week.map((day,di) => (
+                <View key={di} style={{
+                  width:CELL, height:CELL, borderRadius:4, marginRight: di<6?CAL_GAP:0,
+                  backgroundColor: day.active ? Colors.primary : Colors.surfaceRaised,
+                  opacity: day.future ? 0.2 : 1,
+                }} />
+              ))}
             </View>
           ))}
         </View>
@@ -292,25 +222,13 @@ function SessionRow({ session, expanded, onPress }) {
                 <Text style={sr.exName}>{e.exercise_name}</Text>
                 {e.body_section ? <Text style={sr.exSub}>{e.body_section}</Text> : null}
               </View>
-              <Text style={sr.exDetail}>{exDetail(e)}</Text>
+              <Text style={sr.exDetail}>{exerciseDetail(e)}</Text>
             </View>
           ))}
         </View>
       )}
     </TouchableOpacity>
   );
-}
-function exDetail(e) {
-  if (e.exercise_type==='regular' && e.weight_kg!=null)
-    return `${e.weight_kg}kg × ${e.sets_completed??e.sets_planned??'?'}×${e.reps??'?'}`;
-  if (e.exercise_type==='warmup' && e.duration_secs) return formatTime(e.duration_secs);
-  if (e.exercise_type==='intervals') {
-    const cardioType = e.cardio_type ?? 'intervals';
-    if (cardioType === 'treadmill') return `${e.speed_kmh??'?'}km/h · ${e.incline_pct??0}% · ${formatTime(e.duration_secs??0)}`;
-    if (cardioType === 'stairs')    return `${e.speed_kmh??'?'}km/h · ${formatTime(e.duration_secs??0)}`;
-    return `${e.intervals_done??'?'}/${e.intervals_planned??'?'} reps`;
-  }
-  return '';
 }
 const sr = StyleSheet.create({
   card:      { backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, marginBottom:Spacing.sm, ...Shadows.card },
@@ -349,38 +267,29 @@ const cc = StyleSheet.create({
 });
 
 // ─── Exercise progression: pill selector + line chart ────────────────────────
-function ExerciseProgression({ sessions }) {
+function ExerciseProgression({ sessions, exerciseNames }) {
   const [selected, setSelected] = useState(null);
   const [showPicker, setShowPicker] = useState(false);
-  const { exerciseNames } = computeCharts(sessions); // just for names
 
-  // Build progression data from sessions for the selected exercise
-  const progressData = (() => {
-    if (!selected) return [];
-    const byDate = {};
-    sessions.forEach(s => {
-      const date = s.started_at.slice(0, 10);
-      (s.exercises ?? []).forEach(e => {
-        if (e.exercise_name !== selected || e.exercise_type !== 'regular' || !e.weight_kg) return;
-        byDate[date] = Math.max(byDate[date] ?? 0, e.weight_kg);
-      });
-    });
-    return Object.entries(byDate)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({ label: fmtDate(date), value }));
-  })();
+  // Default to the first exercise, as the web dashboard does, so both open on
+  // the same chart instead of one showing an empty prompt.
+  useEffect(() => {
+    setSelected(prev => prev ?? exerciseNames[0] ?? null);
+  }, [exerciseNames]);
+
+  const progressData = computeProgression(sessions, selected);
 
   if (!exerciseNames.length) {
     return (
-      <ChartCard title="EXERCISE PROGRESSION" icon="trending-up-outline" empty />
+      <ChartCard title="Exercise progression" icon="trending-up-outline" empty />
     );
   }
 
   return (
     <ChartCard
-      title="EXERCISE PROGRESSION"
+      title="Exercise progression"
       icon="trending-up-outline"
-      subtitle={selected ? `${progressData.length} sessions` : ''}
+      subtitle="max weight per session"
     >
       <View style={{ marginBottom: Spacing.md }}>
         <PickerField
@@ -416,31 +325,6 @@ function ExerciseProgression({ sessions }) {
   );
 }
 
-// ─── Body metrics: bucket daily entries into weekly averages ─────────────────
-function computeMetricCharts(rows) {
-  const weekKeys = last12Weeks();
-  const fields = ['weight_kg', 'waist_cm', 'diet_pct'];
-  const sums = {}, counts = {};
-  fields.forEach(f => {
-    sums[f] = Object.fromEntries(weekKeys.map(k => [k, 0]));
-    counts[f] = Object.fromEntries(weekKeys.map(k => [k, 0]));
-  });
-
-  rows.forEach(r => {
-    const wk = isoWeek(r.week_date + 'T12:00:00');
-    if (sums.weight_kg[wk] === undefined) return;
-    fields.forEach(f => {
-      if (r[f] != null) { sums[f][wk] += parseFloat(r[f]); counts[f][wk]++; }
-    });
-  });
-
-  const build = f => weekKeys
-    .filter(k => counts[f][k] > 0)
-    .map(k => ({ label: weekLabel(k), value: Math.round((sums[f][k] / counts[f][k]) * 10) / 10 }));
-
-  return { weightData: build('weight_kg'), waistData: build('waist_cm'), dietData: build('diet_pct') };
-}
-
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -472,7 +356,7 @@ export default function DashboardScreen({ navigation }) {
             )
           `)
           .order('started_at', { ascending: false })
-          .limit(60),   // 60 sessions covers plenty of history for charts
+          .limit(SESSION_LIMIT),
         supabase
           .from('body_metrics')
           .select('week_date, weight_kg, waist_cm, diet_pct')
@@ -482,20 +366,12 @@ export default function DashboardScreen({ navigation }) {
       ]);
 
       if (raw) {
-        const shaped = raw.map(s => ({
-          ...s,
-          exercise_count: s.workout_exercises?.length ?? 0,
-          exercises: (s.workout_exercises ?? [])
-            .sort((a, b) => (a.perf_order ?? 0) - (b.perf_order ?? 0)),
-        }));
+        const shaped = shapeSessions(raw);
         setSessions(shaped);
-
-        const totalSecs = shaped.reduce((sum, s) => sum + (s.duration_secs ?? 0), 0);
-        const activeDays = new Set(shaped.map(s => s.started_at.slice(0, 10))).size;
-        setStats({ count: shaped.length, totalSecs, activeDays });
-        setCharts(computeCharts(shaped));
+        setStats(computeStats(shaped));
+        setCharts(computeCharts(shaped, CHART_WEEKS));
       }
-      if (metricRows) setMetricCharts(computeMetricCharts(metricRows));
+      if (metricRows) setMetricCharts(computeMetricCharts(metricRows, CHART_WEEKS));
     } catch (e) {
       console.warn('[Dashboard] load error:', e);
     } finally {
@@ -540,9 +416,10 @@ export default function DashboardScreen({ navigation }) {
         {/* ── Stats ── */}
         {stats && (
           <View style={ds.statsRow}>
-            <StatCard icon="barbell-outline" value={stats.count}             label="Sessions"    color={Colors.primary} />
-            <StatCard icon="time-outline"     value={fmtDur(stats.totalSecs)} label="Total time"  color={Colors.blue} />
-            <StatCard icon="calendar-outline" value={stats.activeDays}        label="Active days" color={Colors.gold} />
+            <StatCard icon="barbell-outline"  value={stats.count}                  label="Sessions"    color={Colors.primary} />
+            <StatCard icon="time-outline"     value={fmtDur(stats.totalSecs)}      label="Total time"  color={Colors.blue} />
+            <StatCard icon="calendar-outline" value={stats.activeDays}             label="Active days" color={Colors.gold} />
+            <StatCard icon="trending-up-outline" value={fmtVolume(stats.totalVolume)} label="kg lifted" color={Colors.amber} />
           </View>
         )}
 
@@ -557,7 +434,7 @@ export default function DashboardScreen({ navigation }) {
           <>
             {/* ── Activity calendar ── */}
             <View style={ds.section}>
-              <Text style={ds.sectionTitle}>Activity</Text>
+              <Text style={ds.sectionTitle}>Activity — last 10 weeks</Text>
               <View style={cc.card}>
                 <ActivityCalendar sessions={sessions} />
               </View>
@@ -567,9 +444,9 @@ export default function DashboardScreen({ navigation }) {
             <View style={ds.section}>
               <Text style={ds.sectionTitle}>Charts</Text>
               <ChartCard
-                title="TRAINING FREQUENCY"
+                title="Training frequency"
                 icon="pulse-outline"
-                subtitle="Workouts per week"
+                subtitle="workouts per week"
                 empty={charts?.freqData?.every(d => d.value === 0)}
               >
                 {charts?.freqData && (
@@ -584,34 +461,34 @@ export default function DashboardScreen({ navigation }) {
               {/* ── Volume trend ── */}
               {hasVolume && (
                 <ChartCard
-                  title="TOTAL VOLUME"
+                  title="Total volume"
                   icon="barbell-outline"
-                  subtitle="avg kg per session"
+                  subtitle="kg lifted per week"
                 >
                   <BarChart
                     data={charts.volumeData}
                     color={Colors.primary}
-                    valueFormatter={v => v === 0 ? '' : (v > 999 ? `${(v/1000).toFixed(1)}k` : String(v))}
+                    valueFormatter={v => v === 0 ? '' : fmtVolume(v)}
                   />
                 </ChartCard>
               )}
 
               {/* ── Exercise progression ── */}
-              <ExerciseProgression sessions={sessions} />
+              <ExerciseProgression sessions={sessions} exerciseNames={charts?.exerciseNames ?? []} />
 
               {/* ── Body metrics (weekly averages) ── */}
               {metricCharts?.weightData?.length >= 2 && (
-                <ChartCard title="WEIGHT" icon="body-outline" subtitle="weekly avg · kg">
+                <ChartCard title="Weight" icon="body-outline" subtitle="weekly avg · kg">
                   <LineChart data={metricCharts.weightData} color={Colors.blue} />
                 </ChartCard>
               )}
               {metricCharts?.waistData?.length >= 2 && (
-                <ChartCard title="WAIST" icon="resize-outline" subtitle="weekly avg · cm">
+                <ChartCard title="Waist" icon="resize-outline" subtitle="weekly avg · cm">
                   <LineChart data={metricCharts.waistData} color={Colors.amber} unit="cm" />
                 </ChartCard>
               )}
               {metricCharts?.dietData?.length >= 2 && (
-                <ChartCard title="DIET ADHERENCE" icon="restaurant-outline" subtitle="weekly avg · %">
+                <ChartCard title="Diet adherence" icon="restaurant-outline" subtitle="weekly avg · %">
                   <LineChart data={metricCharts.dietData} color={Colors.gold} unit="%" />
                 </ChartCard>
               )}
@@ -620,7 +497,7 @@ export default function DashboardScreen({ navigation }) {
             {/* ── Recent sessions ── */}
             <View style={ds.section}>
               <Text style={ds.sectionTitle}>Recent sessions</Text>
-              {sessions.slice(0, 20).map(s => (
+              {sessions.slice(0, RECENT_LIMIT).map(s => (
                 <SessionRow
                   key={s.id}
                   session={s}
@@ -643,7 +520,9 @@ const ds = StyleSheet.create({
   signOutBtn:   { width:40, alignItems:'flex-end' },
   content:      { padding:Spacing.md, gap:Spacing.md },
   userEmail:    { ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center' },
-  statsRow:     { flexDirection:'row', gap:Spacing.sm },
+  // Four stat cards wrap into a 2×2 grid rather than being squeezed into one
+  // row — "12h 05m" needs room to stay on a single line.
+  statsRow:     { flexDirection:'row', flexWrap:'wrap', gap:Spacing.sm },
   section:      { gap:Spacing.sm },
   sectionTitle: { ...Typography.label, color:Colors.textSecondary, textTransform:'uppercase', letterSpacing:1, fontSize:11 },
   empty:        { alignItems:'center', paddingVertical:Spacing.xxl, gap:Spacing.md },

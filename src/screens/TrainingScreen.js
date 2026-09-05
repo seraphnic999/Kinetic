@@ -176,14 +176,18 @@ function RegularDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBac
   const done     = state.setsLeft === 0;
   const started  = state.setStartedAt != null;
 
-  // Live elapsed counter while set is in progress
+  // Live elapsed counter while set is in progress. `now` must be re-seeded the
+  // moment the set starts — otherwise it still holds the timestamp from when
+  // this detail view mounted, which is *earlier* than setStartedAt and shows a
+  // negative elapsed time until the first interval tick lands.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!started) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [started]);
-  const setElapsed = started ? Math.floor((now - state.setStartedAt) / 1000) : 0;
+  }, [started, state.setStartedAt]);
+  const setElapsed = started ? Math.max(0, Math.floor((now - state.setStartedAt) / 1000)) : 0;
 
   return (
     <View style={d.container}>
@@ -240,13 +244,16 @@ function ComboDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack 
   const done    = state.setsLeft === 0;
   const started = state.setStartedAt != null;
 
+  // See RegularDetail — `now` is re-seeded on start so the first render of the
+  // elapsed counter isn't computed against a stale (pre-start) timestamp.
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     if (!started) return;
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [started]);
-  const setElapsed = started ? Math.floor((now - state.setStartedAt) / 1000) : 0;
+  }, [started, state.setStartedAt]);
+  const setElapsed = started ? Math.max(0, Math.floor((now - state.setStartedAt) / 1000)) : 0;
   return (
     <View style={d.container}>
       <Text style={d.name}>🔗 {exercise.name || 'Combo'}</Text>
@@ -517,7 +524,9 @@ const d = StyleSheet.create({
   actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.sm, ...Shadows.orange },
-  startBtn:  { backgroundColor: Colors.surfaceRaised, borderWidth: 2, borderColor: Colors.primary },
+  // START SET is a lighter ember than the solid-orange SET DONE, so the two
+  // states of the same button are told apart at a glance mid-workout.
+  startBtn:  { backgroundColor: Colors.primaryLight },
   actionTxt: { ...Typography.h2, color: Colors.background, fontWeight: '800' },
   elapsedRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                gap: Spacing.xs, paddingVertical: Spacing.xs },
@@ -1149,19 +1158,36 @@ export default function TrainingScreen({ navigation, route }) {
     addEvent('rest_start', { durationSecs: secs });
     setRestSec(secs);
     setRestActive(true);
-    scheduleTimerNotification(secs, 'Rest over — time to lift! 💪', 'beep_rest.wav')
-      .then(id => { restNotifRef.current = id; });
+    // Keep the promise, not just the resolved id: rest can be cut short before
+    // scheduling has resolved, and cancelling by a still-null ref would leave
+    // the "rest over" alert to fire in the middle of the next set.
+    restNotifRef.current = scheduleTimerNotification(secs, 'Rest over — time to lift! 💪', 'beep_rest.wav');
+  }, [session, addEvent]);
+
+  // Cut rest short — the athlete is back under the bar, so the countdown and
+  // its "rest over" notification are no longer wanted.
+  const stopRest = useCallback(() => {
+    if (restEndTimeRef.current == null) return;
+    cancelTimerNotification(restNotifRef.current); restNotifRef.current = null;
+    restEndTimeRef.current = null;
+    addEvent('rest_end', { interrupted: true });
+    setRestSec(session?.restTimerSecs ?? 60);
+    setRestActive(false);
   }, [session, addEvent]);
 
   // ─── Auto-complete check ─────────────────────────────────────────────────
+  // Skipped in ad-hoc mode: there the exercise list is built as you go, so
+  // "everything done" is the normal state between adding exercises and would
+  // pop the end-session prompt after every single one.
   useEffect(() => {
+    if (adHoc) return;
     const exs = session?.exercises ?? [];
     if (!exs.length) return;
     const allDone = exs.every(e => exStates[e.id]?.status === 'complete');
     if (allDone) {
       setTimeout(() => setShowEndConfirm(true), 600);
     }
-  }, [exStates]);
+  }, [exStates, adHoc]);
 
   // ─── End session ─────────────────────────────────────────────────────────
   const doEndSession = useCallback((save = true) => {
@@ -1254,6 +1280,7 @@ export default function TrainingScreen({ navigation, route }) {
   }, [session]);
 
   const handleSetStart = useCallback((id) => {
+    stopRest();   // rest is over the moment the next set begins
     const ex = (session?.exercises ?? []).find(e => e.id === id);
     const st = exStatesRef.current[id];
     addEvent('set_start', {
@@ -1262,7 +1289,7 @@ export default function TrainingScreen({ navigation, route }) {
       setNumber:    (st?.setsCompleted ?? 0) + 1,
     });
     setExStates(prev => ({ ...prev, [id]: { ...prev[id], setStartedAt: Date.now() } }));
-  }, [session, addEvent]);
+  }, [session, addEvent, stopRest]);
 
   const handleSetDone = useCallback((id) => {
     setExStates(prev => {

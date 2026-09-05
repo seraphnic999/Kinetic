@@ -51,18 +51,19 @@ CREATE TABLE workout_exercises (
 );
 
 -- ── body_metrics ──────────────────────────────────────────────────────────────
--- One row per user per ISO week (week_date = that Monday, YYYY-MM-DD).
--- training_count is auto-populated by the app from workout_sessions — never
--- entered manually. weight_kg / waist_cm / diet_pct are manual weekly entries.
+-- One row per user per DAY. `week_date` is a historical name — both the app's
+-- Body Metrics screen and the web form log an entry against a specific calendar
+-- day, and the dashboards average those entries into Sunday→Saturday weeks.
+-- weight_kg / waist_cm / diet_pct are all entered manually.
 CREATE TABLE body_metrics (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID REFERENCES auth.users NOT NULL,
-  week_date     DATE NOT NULL,               -- ISO Monday of the week
+  week_date     DATE NOT NULL,               -- the day the entry is for
   weight_kg     NUMERIC(5,1),               -- e.g. 82.5
   waist_cm      NUMERIC(5,1),               -- e.g. 91.0
   diet_pct      INTEGER CHECK (diet_pct BETWEEN 0 AND 100),
   created_at    TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (user_id, week_date)               -- one row per week, safe to upsert
+  UNIQUE (user_id, week_date)               -- one row per day, safe to upsert
 );
 
 -- ── Row Level Security ────────────────────────────────────────────────────────

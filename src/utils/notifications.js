@@ -69,8 +69,14 @@ export const scheduleTimerNotification = async (seconds, body, soundFile = 'beep
   }
 };
 
-/** Cancel a previously scheduled notification (e.g. timer completed in-app). */
-export const cancelTimerNotification = async (id) => {
+/**
+ * Cancel a previously scheduled notification (e.g. timer completed in-app).
+ * Accepts either an identifier or the still-pending promise returned by
+ * scheduleTimerNotification, so a timer stopped within milliseconds of starting
+ * still gets its notification cancelled once scheduling resolves.
+ */
+export const cancelTimerNotification = async (idOrPending) => {
+  const id = await idOrPending;
   if (!id) return;
   try { await Notifications.cancelScheduledNotificationAsync(id); } catch (_) {}
 };

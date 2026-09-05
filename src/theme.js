@@ -15,6 +15,8 @@ export const Colors = {
 
   // Primary brand
   primary:        '#FF6B2B',  // Kinetic Orange — CTAs, active states
+  primaryLight:   '#FFA366',  // lighter ember — "start" actions, so they read as
+                              // a different button from the primary "done" action
   primaryDim:     '#FF6B2B33',// orange with 20% opacity for glows/halos
 
   // Accents

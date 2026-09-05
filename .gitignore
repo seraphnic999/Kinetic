@@ -19,3 +19,10 @@ ios/
 web/node_modules/
 web/.next/
 web/.env.local
+
+# Built APKs — release artifacts, ~85MB each. Kept on disk, never in git.
+releases/
+*.apk
+
+# Scratch debugging captures (adb logcat dumps etc.)
+dump.txt
