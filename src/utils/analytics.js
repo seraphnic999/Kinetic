@@ -250,3 +250,44 @@ export function exerciseDetail(e) {
     return `${e.sets_completed}/${e.sets_planned ?? '?'} sets`;
   return '';
 }
+
+// ─── Session-template exercise line ───────────────────────────────────────────
+
+/**
+ * One-line summary of an exercise inside a saved *training session template*
+ * (the phone's local session shape, camelCased — not a synced `workout_exercises`
+ * row, which `exerciseDetail` above handles). Shared by the phone's session
+ * editor and the web dashboard's session list so both read a template the same
+ * way.
+ */
+export function templateExerciseLabel(ex) {
+  if (ex.type === 'warmup')
+    return `🔥 Warmup — ${ex.warmupType} • ${fmtSecs(ex.duration ?? 180)}`;
+
+  if (ex.type === 'intervals') {
+    const cardioType = ex.cardioType ?? 'intervals';
+    if (cardioType === 'treadmill')
+      return `🏃 Treadmill — ${ex.speedKmh ?? 6}km/h • ${ex.inclinePct ?? 0}% incline • ${fmtSecs(ex.lengthSecs ?? 600)}`;
+    if (cardioType === 'stairs')
+      return `🪜 Stairs — ${ex.speedKmh ?? 6}km/h • ${fmtSecs(ex.lengthSecs ?? 600)}`;
+    return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+  }
+
+  if (ex.type === 'combo') {
+    const parts = [...new Set(
+      (ex.subExercises ?? [])
+        .map(s => (s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection))
+        .filter(Boolean)
+    )].join(' / ');
+    return parts ? `🔗 ${parts} — ${ex.sets} sets` : `🔗 Combo — ${ex.sets} sets`;
+  }
+
+  const section = ex.bodySection === 'Other'
+    ? (ex.customBodySection || 'Other')
+    : (ex.bodySection || '');
+  const name = (ex.name === 'Other' || ex.bodySection === 'Other')
+    ? (ex.customName || 'Unnamed')
+    : (ex.name || 'Unnamed');
+  const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
+  return section ? `${section} — ${name} — ${details}` : `${name} — ${details}`;
+}

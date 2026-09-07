@@ -26,3 +26,5 @@ releases/
 
 # Scratch debugging captures (adb logcat dumps etc.)
 dump.txt
+.vercel
+.env*

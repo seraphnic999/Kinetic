@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { supabase } from '../config/supabase';
+import { signOut as signOutAccount } from '../hooks/useAuth';
 import { PickerModal, PickerField } from '../components/PickerModal';
 import {
   fmtDate, fmtDur, fmtVolume,
@@ -382,7 +383,7 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
-  const signOut   = () => supabase.auth.signOut();
+  const signOut   = () => signOutAccount();
 
   if (loading) return (
     <View style={{ flex:1, backgroundColor:Colors.background, alignItems:'center', justifyContent:'center' }}>

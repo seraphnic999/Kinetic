@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Alert, StatusBar, useWindowDimensions,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  RefreshControl, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
-import { loadSessions, saveSessions } from '../utils/storage';
+import { loadSessions, deleteSession, syncSessions } from '../utils/storage';
+import { useAuth, signOut } from '../hooks/useAuth';
 import { EXERCISE_TYPES } from '../data/exercises';
 
 // Derive unique body areas covered by a session's exercises
@@ -34,19 +35,41 @@ export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
+  const [showAccount, setShowAccount] = useState(false);
+  const [signingOut, setSigningOut]   = useState(false);
+  const [refreshing, setRefreshing]   = useState(false);
+  const { session: auth } = useAuth();
+  const userEmail = auth?.user?.email ?? '';
 
+  // Render the cache first so the list is up instantly and works with no
+  // connectivity, then reconcile with Supabase in the background.
   useFocusEffect(
     useCallback(() => {
-      loadSessions().then(setSessions);
+      let alive = true;
+      loadSessions().then(s => { if (alive) setSessions(s); });
+      syncSessions().then(s => { if (alive) setSessions(s); });
+      return () => { alive = false; };
     }, [])
   );
 
+  const onRefresh = async () => {
+    setRefreshing(true);
+    setSessions(await syncSessions());
+    setRefreshing(false);
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget) return;
-    const updated = sessions.filter(s => s.id !== deleteTarget.id);
-    setSessions(updated);
-    await saveSessions(updated);
+    await deleteSession(deleteTarget.id);
+    setSessions(await loadSessions());
     setDeleteTarget(null);
+  };
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    await signOut();
+    setSigningOut(false);
+    setShowAccount(false);
   };
 
   const renderSession = ({ item }) => {
@@ -114,11 +137,17 @@ export default function SessionListScreen({ navigation }) {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <View>
+        <TouchableOpacity style={styles.accountBtn} onPress={() => setShowAccount(true)} activeOpacity={0.7}>
           <Text style={styles.headerTitle}>Kinetic</Text>
-          <Text style={styles.headerSubtitle}>Your training sessions</Text>
-        </View>
-        <View style={{ flexDirection: 'row', gap: Spacing.xs }}>
+          <View style={styles.accountRow}>
+            <Ionicons name="person-circle-outline" size={15} color={Colors.textSecondary} />
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              {userEmail || 'Your training sessions'}
+            </Text>
+            <Ionicons name="chevron-down" size={12} color={Colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: Spacing.xs, flexShrink: 0 }}>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
             onPress={() => navigation.navigate('Dashboard')}
@@ -181,7 +210,44 @@ export default function SessionListScreen({ navigation }) {
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + Spacing.xl }]}
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+          }
         />
+      )}
+
+      {/* Account / sign out */}
+      {showAccount && (
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmBox}>
+            <Text style={styles.confirmTitle}>Account</Text>
+            <Text style={styles.confirmMsg}>Signed in as</Text>
+            <Text style={styles.accountEmail}>{userEmail || 'unknown'}</Text>
+            <Text style={styles.accountNote}>
+              Your sessions are saved to your account — they come back when you sign in again.
+            </Text>
+            <View style={styles.confirmBtns}>
+              <TouchableOpacity
+                style={styles.confirmCancelBtn}
+                onPress={() => setShowAccount(false)}
+                disabled={signingOut}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.confirmCancelTxt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmDeleteBtn}
+                onPress={handleSignOut}
+                disabled={signingOut}
+                activeOpacity={0.8}
+              >
+                {signingOut
+                  ? <ActivityIndicator color={Colors.textPrimary} />
+                  : <Text style={styles.confirmDeleteTxt}>Sign out</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
 
       {/* Delete confirmation */}
@@ -230,6 +296,18 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     ...Typography.bodySmall,
     color: Colors.textSecondary,
+    flexShrink: 1,
+  },
+  // The signed-in address doubles as the entry point to the account sheet —
+  // the header's button row has no space left for a fifth circle.
+  accountBtn: {
+    flex: 1,
+    marginRight: Spacing.sm,
+  },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     marginTop: 2,
   },
   addBtn: {
@@ -369,6 +447,8 @@ const styles = StyleSheet.create({
   },
   confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
   confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
+  accountEmail: { ...Typography.body, color: Colors.textPrimary, textAlign: 'center', marginTop: -Spacing.xs },
+  accountNote:  { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center' },
   confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   confirmCancelBtn: {
     flex: 1, height: 44, borderRadius: Radius.md,

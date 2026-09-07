@@ -7,9 +7,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
-import { loadSessions, saveSessions, generateId } from '../utils/storage';
+import { upsertSession, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES, CARDIO_TYPES, CARDIO_TYPE_LABELS } from '../data/exercises';
 import { formatTime } from '../utils/time';
+import { templateExerciseLabel } from '../utils/analytics';
 
 // ---------- Sub-component: Numeric Stepper ----------
 function Stepper({ value, onChange, min = 0, max = 999, label }) {
@@ -413,18 +414,13 @@ export default function SessionEditorScreen({ navigation, route }) {
       const i = exs.filter(e => e.type === EXERCISE_TYPES.INTERVALS);
       return [...w, ...m, ...i];
     })();
-    const session = {
+    await upsertSession({
       id: sessionId,
       name: name.trim() || 'New Session',
       exercises: effective,
       restTimerSecs: rest,
       createdAt: createdAt.current,
-    };
-    const sessions = await loadSessions();
-    const updated  = sessions.some(s => s.id === sessionId)
-      ? sessions.map(s => s.id === sessionId ? session : s)
-      : [...sessions, session];
-    await saveSessions(updated);
+    });
   }, [sessionId]);
 
   useEffect(() => {
@@ -487,31 +483,8 @@ export default function SessionEditorScreen({ navigation, route }) {
     });
   };
 
-  const getExerciseLabel = (ex) => {
-    if (ex.type === EXERCISE_TYPES.WARMUP)    return `🔥 Warmup — ${ex.warmupType} • ${formatTime(ex.duration ?? 180)}`;
-    if (ex.type === EXERCISE_TYPES.INTERVALS) {
-      const cardioType = ex.cardioType ?? CARDIO_TYPES.INTERVALS;
-      if (cardioType === CARDIO_TYPES.TREADMILL)
-        return `🏃 Treadmill — ${ex.speedKmh ?? 6}km/h • ${ex.inclinePct ?? 0}% incline • ${formatTime(ex.lengthSecs ?? 600)}`;
-      if (cardioType === CARDIO_TYPES.STAIRS)
-        return `🪜 Stairs — ${ex.speedKmh ?? 6}km/h • ${formatTime(ex.lengthSecs ?? 600)}`;
-      return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
-    }
-    if (ex.type === EXERCISE_TYPES.COMBO) {
-      const parts = [...new Set(
-        (ex.subExercises ?? []).map(s => s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection).filter(Boolean)
-      )].join(' / ');
-      return parts ? `🔗 ${parts} — ${ex.sets} sets` : `🔗 Combo — ${ex.sets} sets`;
-    }
-    const section = ex.bodySection === 'Other'
-      ? (ex.customBodySection || 'Other')
-      : (ex.bodySection || '');
-    const name = (ex.name === 'Other' || ex.bodySection === 'Other')
-      ? (ex.customName || 'Unnamed')
-      : (ex.name || 'Unnamed');
-    const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
-    return section ? `${section} — ${name} — ${details}` : `${name} — ${details}`;
-  };
+  // Shared with the web dashboard's session list — see utils/analytics.js.
+  const getExerciseLabel = templateExerciseLabel;
 
   const isReorderable = (ex) =>
     ex.type !== EXERCISE_TYPES.WARMUP && ex.type !== EXERCISE_TYPES.INTERVALS;

@@ -11,7 +11,7 @@ import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
 import { formatTime } from '../utils/time';
 import { EXERCISE_TYPES, CARDIO_TYPES } from '../data/exercises';
 import { generateTrainingCsv } from '../utils/generateCsv';
-import { loadSessions, saveSessions, generateId } from '../utils/storage';
+import { upsertSession, generateId } from '../utils/storage';
 
 const STATUS_ICON = {
   complete: { name: 'checkmark-circle', color: Colors.gold },
@@ -155,15 +155,13 @@ export default function SummaryScreen({ navigation, route }) {
     if (!name) return;
     setSavingSession(true);
     try {
-      const newSession = {
+      await upsertSession({
         id: generateId(),
         name,
         exercises: reusableSession.exercises,
         restTimerSecs: reusableSession.restTimerSecs ?? 60,
         createdAt: Date.now(),
-      };
-      const sessions = await loadSessions();
-      await saveSessions([...sessions, newSession]);
+      });
       setSessionSaved(true);
       setShowSaveModal(false);
     } catch (e) {

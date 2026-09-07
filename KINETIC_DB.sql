@@ -66,11 +66,41 @@ CREATE TABLE body_metrics (
   UNIQUE (user_id, week_date)               -- one row per day, safe to upsert
 );
 
+-- ── training_sessions ─────────────────────────────────────────────────────────
+-- The session *templates* the phone's list screen shows and the Training screen
+-- runs — distinct from workout_sessions above, which is history.
+--
+-- `id` is the client-generated string id ("<epoch>_<rand>") the app assigns, so
+-- a session created with no connection keeps its identity when it later reaches
+-- the server; the composite primary key keeps two users' ids from colliding.
+-- `exercises` is the phone's session shape verbatim (camelCase JSON), which is
+-- what the Training screen consumes and what src/utils/analytics.js
+-- `templateExerciseLabel` renders on both platforms.
+--
+-- Deletes are tombstones (`deleted_at`), never row removals: that is what lets
+-- a device that has been offline tell "this session was never pushed" (absent)
+-- from "this session was deleted on another device" (present, tombstoned).
+CREATE TABLE training_sessions (
+  id              TEXT        NOT NULL,
+  user_id         UUID        NOT NULL REFERENCES auth.users,
+  name            TEXT        NOT NULL,
+  exercises       JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  rest_timer_secs INTEGER     NOT NULL DEFAULT 60,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- last edit, set by the client (last-write-wins)
+  deleted_at      TIMESTAMPTZ,
+  PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX training_sessions_user_updated_idx
+  ON training_sessions (user_id, updated_at DESC);
+
 -- ── Row Level Security ────────────────────────────────────────────────────────
--- Every user sees only their own rows on all three tables.
+-- Every user sees only their own rows on all four tables.
 ALTER TABLE workout_sessions  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workout_exercises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE body_metrics      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE training_sessions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "own sessions"  ON workout_sessions
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -79,4 +109,7 @@ CREATE POLICY "own exercises" ON workout_exercises
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "own metrics"   ON body_metrics
+  FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "own training sessions" ON training_sessions
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);

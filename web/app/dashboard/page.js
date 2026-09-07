@@ -10,7 +10,7 @@ import { supabase } from '../../lib/supabase';
 import {
   fmtDate, fmtDur, fmtSecs, fmtVolume, isoDay,
   shapeSessions, computeStats, computeCharts, computeProgression, computeMetricCharts,
-  buildCalendar, exerciseDetail, WEEKDAY_LABELS,
+  buildCalendar, exerciseDetail, templateExerciseLabel, WEEKDAY_LABELS,
   CALENDAR_DAYS, CHART_WEEKS, SESSION_LIMIT, RECENT_LIMIT,
 } from '../../lib/analytics';
 
@@ -107,28 +107,38 @@ function StatCard({ label, value, color }) {
 // ─── Activity calendar ───────────────────────────────────────────────────────
 // Same grid as the phone: one row per Sunday → Saturday week, labelled with the
 // week's Sunday, days after today dimmed.
+//
+// Day cells are a fixed size, never `flex-1`: stretched across this page's
+// content column a square cell is ~145px, which made ten weeks of history taller
+// than the viewport. The grid is left-aligned at its natural width instead.
 function ActivityCalendar({ sessions }) {
   const weeks = buildCalendar(sessions, CALENDAR_DAYS);
+  const cell = 'w-6 h-6 sm:w-7 sm:h-7 shrink-0';
   return (
     <div className="bg-surface rounded-xl p-5">
       <h3 className="text-xs uppercase tracking-wider text-secondary mb-4">Activity — last 10 weeks</h3>
-      <div className="flex gap-1 mb-1.5 pl-14 text-[10px] text-muted">
-        {WEEKDAY_LABELS.map((l, i) => (
-          <span key={i} className="flex-1 text-center">{l}</span>
-        ))}
-      </div>
-      <div className="flex flex-col gap-1">
-        {weeks.map((week, wi) => (
-          <div key={wi} className="flex items-center gap-1">
-            <span className="w-14 shrink-0 text-[10px] text-muted">
-              {week[0].date.toLocaleDateString('en', { month: 'short', day: 'numeric' })}
-            </span>
-            {week.map(day => (
-              <div key={day.key} title={`${day.key}${day.active ? ' — workout' : ''}`}
-                className={`flex-1 aspect-square rounded-sm ${day.active ? 'bg-primary' : 'bg-raised'} ${day.future ? 'opacity-20' : ''}`} />
+      <div className="overflow-x-auto">
+        <div className="inline-block">
+          <div className="flex gap-1 mb-1.5 text-[10px] text-muted">
+            <span className="w-14 shrink-0" />
+            {WEEKDAY_LABELS.map((l, i) => (
+              <span key={i} className={`${cell} text-center`}>{l}</span>
             ))}
           </div>
-        ))}
+          <div className="flex flex-col gap-1">
+            {weeks.map((week, wi) => (
+              <div key={wi} className="flex items-center gap-1">
+                <span className="w-14 shrink-0 text-[10px] text-muted">
+                  {week[0].date.toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+                </span>
+                {week.map(day => (
+                  <div key={day.key} title={`${day.key}${day.active ? ' — workout' : ''}`}
+                    className={`${cell} rounded-sm ${day.active ? 'bg-primary' : 'bg-raised'} ${day.future ? 'opacity-20' : ''}`} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       <div className="flex gap-2 mt-3 text-xs text-muted items-center">
         <div className="w-3 h-3 rounded-sm bg-raised" /> No workout
@@ -245,6 +255,46 @@ function SessionRow({ session }) {
   );
 }
 
+// ─── Training session (template) row ─────────────────────────────────────────
+// A saved session the phone can run, not a workout that happened. Read-only
+// here — sessions are created and edited in the app.
+function TrainingSessionRow({ session }) {
+  const [open, setOpen] = useState(false);
+  const exercises = session.exercises ?? [];
+
+  return (
+    <div className="bg-surface rounded-xl overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-raised transition text-left">
+        <div>
+          <p className="font-semibold">{session.name}</p>
+          <p className="text-secondary text-sm mt-0.5">
+            {exercises.length} exercise{exercises.length === 1 ? '' : 's'}
+            {' · '}{fmtSecs(session.rest_timer_secs ?? 60)} rest
+            {session.created_at && ` · added ${fmtDate(session.created_at)}`}
+          </p>
+        </div>
+        <svg className={`w-5 h-5 text-muted transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-4 pt-3 border-t border-border space-y-2">
+          {exercises.length === 0
+            ? <p className="text-sm text-muted">No exercises in this session yet.</p>
+            : exercises.map((ex, i) => (
+                <div key={ex.id ?? i} className="flex items-start gap-3">
+                  <span className="text-xs text-muted w-5 shrink-0 mt-0.5">{i + 1}.</span>
+                  <span className="text-sm flex-1">{templateExerciseLabel(ex)}</span>
+                </div>
+              ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Body metrics log form ───────────────────────────────────────────────────
 // Entries are per-day (matching the phone's Body Metrics screen); the charts
 // above average them into Sunday → Saturday weeks.
@@ -317,6 +367,7 @@ function MetricsForm({ metrics, onSaved }) {
 export default function DashboardPage() {
   const router = useRouter();
   const [sessions, setSessions] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [stats, setStats]       = useState(null);
   const [charts, setCharts]     = useState(null);
   const [metrics, setMetrics]   = useState([]);
@@ -330,7 +381,7 @@ export default function DashboardPage() {
     if (!auth) { router.replace('/login'); return; }
     setUserEmail(auth.user.email ?? '');
 
-    const [{ data: raw }, { data: metricRows }] = await Promise.all([
+    const [{ data: raw }, { data: metricRows }, { data: templateRows }] = await Promise.all([
       supabase
         .from('workout_sessions')
         .select(`id, name, started_at, duration_secs, timeline,
@@ -346,6 +397,13 @@ export default function DashboardPage() {
         .eq('user_id', auth.user.id)
         .order('week_date', { ascending: true })
         .limit(400),
+      // Session templates, synced from the phone. Deletes are tombstones, so
+      // filter them out rather than expecting the rows to be gone.
+      supabase
+        .from('training_sessions')
+        .select('id, name, exercises, rest_timer_secs, created_at')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: true }),
     ]);
 
     if (raw) {
@@ -360,6 +418,7 @@ export default function DashboardPage() {
       setMetrics(metricRows);
       setMetricCharts(computeMetricCharts(metricRows, CHART_WEEKS));
     }
+    setTemplates(templateRows ?? []);
     setLoading(false);
   }, [router]);
 
@@ -473,11 +532,24 @@ export default function DashboardPage() {
               <h3 className="text-xs uppercase tracking-wider text-secondary mb-3">Recent sessions</h3>
               {sessions.slice(0, RECENT_LIMIT).map(s => <SessionRow key={s.id} session={s} />)}
             </div>
-
-            {/* ── Log body metrics (web-only entry point; the phone has its own screen) ── */}
-            <MetricsForm metrics={metrics} onSaved={load} />
           </>
         )}
+
+        {/* ── Training sessions ── */}
+        {/* Templates synced from the phone. Outside the history check on
+            purpose: a brand-new account has sessions to run before it has any
+            workouts to show. */}
+        <div className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wider text-secondary mb-3">Training sessions</h3>
+          {templates.length === 0
+            ? <p className="text-sm text-muted">
+                No training sessions yet — create one in the Kinetic app and it shows up here.
+              </p>
+            : templates.map(t => <TrainingSessionRow key={t.id} session={t} />)}
+        </div>
+
+        {/* ── Log body metrics (web-only entry point; the phone has its own screen) ── */}
+        <MetricsForm metrics={metrics} onSaved={load} />
       </main>
     </div>
   );

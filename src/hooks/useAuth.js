@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
+import { syncSessions, clearSessionCache } from '../utils/storage';
 
 /**
  * Returns { session, loading }.
@@ -25,4 +26,24 @@ export function useAuth() {
   }, []);
 
   return { session, loading };
+}
+
+/**
+ * Sign out of the current account.
+ *
+ * Flushes anything still pending to Supabase while the access token is valid,
+ * then clears the on-device session cache so the next account doesn't inherit
+ * it. If revoking the token can't reach the server (no connection, token
+ * already expired), falls back to a local-only sign-out — signing out must work
+ * offline, same as everything else in the app.
+ */
+export async function signOut() {
+  try { await syncSessions(); } catch { /* best effort */ }
+  await clearSessionCache();
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  } catch {
+    await supabase.auth.signOut({ scope: 'local' });
+  }
 }
