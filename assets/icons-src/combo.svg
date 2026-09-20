@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
+
+  <!-- horizontal link -->
+  <path d="M18 25
+           H36
+           A7 7 0 0 1 36 39
+           H18
+           A7 7 0 0 1 18 25 Z"/>
+  <!-- vertical link, intentionally broken where it passes behind -->
+  <path d="M32 16
+           A7 7 0 0 1 39 23
+           V27"/>
+  <path d="M39 37
+           V41
+           A7 7 0 0 1 25 41
+           V37"/>
+  <path d="M25 27
+           V23
+           A7 7 0 0 1 32 16"/>
+
+</svg>

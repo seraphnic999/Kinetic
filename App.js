@@ -7,6 +7,16 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
+import {
+  BarlowSemiCondensed_500Medium,
+  BarlowSemiCondensed_600SemiBold,
+  BarlowSemiCondensed_700Bold,
+} from '@expo-google-fonts/barlow-semi-condensed';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+} from '@expo-google-fonts/inter';
 
 import { Colors } from './src/theme';
 import { useAuth } from './src/hooks/useAuth';
@@ -17,6 +27,7 @@ import TrainingScreen      from './src/screens/TrainingScreen';
 import SummaryScreen       from './src/screens/SummaryScreen';
 import DashboardScreen     from './src/screens/DashboardScreen';
 import MetricsScreen       from './src/screens/MetricsScreen';
+import DevIconsScreen      from './src/screens/DevIconsScreen';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -45,25 +56,28 @@ function CrashScreen({ crash }) {
     </View>
   );
 }
+// Literal hex, not theme tokens, on purpose: the crash screen has to render
+// even when the failure is in the theme module itself. Values track Colors.base
+// and Colors.ember by hand.
 const cs = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: '#0D0D0D', padding: 20, paddingTop: 60 },
+  root:   { flex: 1, backgroundColor: '#0F0F11', padding: 20, paddingTop: 60 },
   title:  { color: '#FF6B2B', fontSize: 22, fontWeight: '700', marginBottom: 12 },
   msg:    { color: '#FFFFFF', fontSize: 15, marginBottom: 16, lineHeight: 22 },
   scroll: { flex: 1 },
   stack:  { color: '#888', fontSize: 11, fontFamily: 'monospace', lineHeight: 18 },
 });
 
-// Inject web-only CSS
+// Inject web-only CSS.
+//
+// The DSEG7 @font-face rule that used to live here (pointing at jsdelivr) is
+// gone: the face is now bundled in assets/fonts and registered by `useFonts`
+// below on every platform, web included. Two registrations of the same family
+// name would race, and the whole point of vendoring it is that a countdown
+// must not depend on the network.
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const style = document.createElement('style');
   style.textContent = `
     html, body, #root { height: 100%; margin: 0; padding: 0; overflow: hidden; }
-    @font-face {
-      font-family: 'DSEG7Classic';
-      src: url('https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.woff2') format('woff2'),
-           url('https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.ttf') format('truetype');
-      font-weight: normal; font-style: normal;
-    }
   `;
   document.head.appendChild(style);
 }
@@ -100,18 +114,35 @@ function AppNavigator() {
       <Stack.Screen name="Summary"       component={SummaryScreen} />
       <Stack.Screen name="Dashboard"     component={DashboardScreen} />
       <Stack.Screen name="Metrics"       component={MetricsScreen} />
+      {/* Linked from nowhere — long-press the "Kinetic" wordmark to reach it. */}
+      <Stack.Screen name="DevIcons"      component={DevIconsScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function App() {
-  const [fontsLoaded] = useFonts(
-    Platform.OS !== 'web'
-      ? { 'DSEG7Classic': 'https://cdn.jsdelivr.net/npm/dseg/fonts/DSEG7-Classic/DSEG7Classic-Regular.ttf' }
-      : {}
-  );
+  // Every face is bundled. The old build fetched DSEG7 from a CDN at runtime,
+  // so a cold start with no signal rendered the system fallback in every timer
+  // — in the one environment this app is designed for.
+  const [fontsLoaded, fontError] = useFonts({
+    DSEG7Classic: require('./assets/fonts/DSEG7Classic-Regular.ttf'),
+    BarlowSemiCondensed_500Medium,
+    BarlowSemiCondensed_600SemiBold,
+    BarlowSemiCondensed_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+  });
 
-  if (Platform.OS !== 'web' && !fontsLoaded) return null;
+  // A font that fails to load must not brick the app: render anyway and let the
+  // system faces stand in. Waiting forever on a face is worse than an ugly one.
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.base, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={Colors.ember} size="large" />
+      </View>
+    );
+  }
 
   return (
     <ErrorBoundary>

@@ -137,7 +137,15 @@ export default function SessionListScreen({ navigation }) {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <TouchableOpacity style={styles.accountBtn} onPress={() => setShowAccount(true)} activeOpacity={0.7}>
+        {/* Long-press the wordmark for the hidden icon proof sheet (Dev → Icons).
+            Linked from nowhere else; see src/screens/DevIconsScreen.js. */}
+        <TouchableOpacity
+          style={styles.accountBtn}
+          onPress={() => setShowAccount(true)}
+          onLongPress={() => navigation.navigate('DevIcons')}
+          delayLongPress={800}
+          activeOpacity={0.7}
+        >
           <Text style={styles.headerTitle}>Kinetic</Text>
           <View style={styles.accountRow}>
             <Ionicons name="person-circle-outline" size={15} color={Colors.textSecondary} />

@@ -1,0 +1,81 @@
+Draw icons in exactly the style of the attached reference image, which is the
+approved icon set for this app. Match its line weight, its simplicity and its
+level of detail.
+
+These are REDRAWS of icons that already exist but came back wrong. For each one
+the note says what arrived and what it should be instead - the "not a ..." part
+matters as much as the rest.
+
+- Line art only. Every shape is an open stroke with rounded ends. No filled
+  shapes, no shading, no double lines.
+- Simple and plain. Draw the object, not a detailed illustration of it.
+- Draw each icon as large as it will go in its canvas, centred.
+- One icon per file.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- fill="none", stroke="currentColor", stroke-width="1.5",
+  stroke-linecap="round", stroke-linejoin="round"
+- Any number of <path>, <circle>, <line>, <polyline> elements
+- No transform attributes - bake positions into the coordinates
+- No <mask>, <clipPath>, <defs> or <use> - they cannot be folded into a
+  single path and the build rejects the file
+- Filename is the icon name exactly, e.g. warmup.svg
+
+DRAW THESE 13:
+
+warmup        a flame - pointed tip curling to one side, one inner tongue.
+              Currently a water drop. NOT a rounded top, NOT a symmetric
+              inner shape
+
+flame         the same flame one step simpler - outline plus a single inner
+              tongue. Currently reads as a leaf or an eye
+
+combo         two chain links interlocking, one vertical and one horizontal,
+              with the line BROKEN where one passes behind the other so you
+              can see which is in front. Currently reads as a paperclip
+
+barbell       a bar with TWO thick weight plates at each end and a collar.
+              Currently four thin plates per side, which merge into a comb at
+              small size. Must be clearly longer and heavier than dumbbell
+
+tonnage       three weight plates seen EDGE-ON, stacked flat on each other:
+              three nested rounded rectangles, WIDEST AT THE BOTTOM and
+              narrowest at the top. Currently stacked rings, which reads as a
+              snowman
+
+streak        five plain squares in a row, the first four filled solid and the
+              last one empty. NO ticks inside them - at 34px a tick inside a
+              5px box is a smear
+
+compare       exactly TWO vertical bars of clearly different height, with a
+              bracket or caliper spanning between their tops. Currently three
+              plain bars, which is indistinguishable from chartBar
+
+sets          three stacked rounded bars, like three flat plates seen edge-on.
+              NOT three thin lines - three equal thin lines is a hamburger
+              menu icon and reads as one
+
+plate         a weight plate seen face-on: a thick outer ring, a small solid
+              hub, and four SHORT spokes that stop before reaching the outer
+              ring. Currently reads as a crosshair, too close to target
+
+tape          a measuring tape: a clean oval or rounded loop of tape with
+              evenly spaced graduation marks along its inner edge, and a small
+              buckle. Currently an unreadable squiggle
+
+bodyProfile   a standing person seen from the side, drawn with a SOLID BODY
+              OUTLINE the way the reference figures are - head, back, chest,
+              legs. Currently a stick figure, which is a different style from
+              the rest of the set
+
+diet          a dinner plate seen from above: an outer rim circle, an inner
+              circle inside it, and one divider across the inner circle.
+              Currently a plain circle split in half, which reads as a
+              contrast symbol
+
+emptyMetrics  a bathroom scale with a display that is clearly EMPTY - draw the
+              display as a small rectangle with a dashed or broken edge, or
+              leave it as an outlined window with nothing in it. Currently
+              identical to the scale icon, so the two cannot be told apart

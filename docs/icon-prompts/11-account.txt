@@ -1,0 +1,31 @@
+Draw icons in exactly the style of the attached reference image, which is the
+approved icon set for this app. Match its line weight, its simplicity and its
+level of detail.
+
+- Line art only. Every shape is an open stroke with rounded ends. No filled
+  shapes, no shading, no double lines.
+- Simple and plain. Draw the object, not a detailed illustration of it.
+- Draw each icon as large as it will go in its canvas, centred.
+- One icon per file.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- fill="none", stroke="currentColor", stroke-width="1.5",
+  stroke-linecap="round", stroke-linejoin="round"
+- Any number of <path>, <circle>, <line>, <polyline> elements
+- No transform attributes - bake positions into the coordinates
+- Filename is the icon name exactly, e.g. barbell.svg
+
+DRAW THESE 10:
+
+user           a head and shoulders, no face
+signOut        a doorway with an arrow leaving it to the right
+bell           a notification bell
+lock           a padlock, closed
+mail           an envelope
+eye            an eye
+eyeOff         an eye with a diagonal line through it, with a small gap where the line crosses the eye
+cloudSynced    a cloud with a tick inside it
+cloudOffline   a cloud with a diagonal line through it
+info           a circle with a dot above a short vertical line inside it - no letters

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor" stroke="none">
+
+  <defs>
+    <mask id="cutTick">
+      <rect width="64" height="64" fill="white"/>
+      <path d="M21 32.5 L28.5 40 L44 24.5"
+            fill="none" stroke="black" stroke-width="5.5"
+            stroke-linecap="round" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+  <circle cx="32" cy="32" r="22" mask="url(#cutTick)"/>
+
+</svg>

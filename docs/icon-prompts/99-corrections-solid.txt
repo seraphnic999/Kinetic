@@ -1,0 +1,24 @@
+Draw one icon to match the attached reference image, but this one is a SOLID
+FILLED shape rather than line art - it is used at 18px, where a thin line
+disappears.
+
+This is a REDRAW. The previous version used an SVG <mask> to cut the tick out
+of the disc. The build folds every icon into one compound path and cannot
+resolve a mask, so it rejects the file. The cut-out has to be a HOLE in the
+same path instead.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- ONE <path> with fill="currentColor" and fill-rule="evenodd", no stroke
+- The tick is a hole inside the disc, made by the evenodd rule - the path
+  contains the disc outline and then the tick outline inside it
+- No <mask>, <clipPath>, <defs> or <use>
+- No transform attributes - bake positions into the coordinates
+- Filename is statusComplete.svg
+
+DRAW THIS 1:
+
+statusComplete   a solid filled disc with a tick cut out of it as a hole.
+                 The tick should be chunky - about 5 units wide on the 64
+                 grid, with rounded ends - so it survives at 18px

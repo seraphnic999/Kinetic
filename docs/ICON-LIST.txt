@@ -1,0 +1,11 @@
+Body sections: bodyChest, bodyBack, bodyShoulders, bodyArmsFront, bodyArmsBack, bodyLegs, bodyCore, bodyOther
+Tabs: tabTrain, tabStats, tabBody, tabYou, tabTrainActive, tabStatsActive, tabBodyActive, tabYouActive
+Exercise types: barbell, dumbbell, combo, warmup, intervals, treadmill, stairs, cardio
+Chrome: back, forward, close, more, search, filter, sort, add, minus, check, chevronUp, chevronDown, chevronLeft, chevronRight, refresh, settings
+Training: play, pause, stop, skip, setDone, rest, timer, stopwatch, plate, reps, sets, flame, bolt, target
+Status: statusPending, statusPartial, statusComplete, statusSkipped
+Stats: chartBar, chartLine, calendar, streak, trophy, tonnage, trendUp, trendDown, trendFlat, clock, activity, history, compare, export
+Body metrics: scale, tape, diet, ruler, bodyProfile
+Account & system: user, signOut, bell, lock, mail, eye, eyeOff, cloudSynced, cloudOffline, info
+Actions: edit, trash, duplicate, dragHandle, share, save, warning, error
+Empty states: emptySessions, emptyHistory, emptyChart, emptyMetrics, emptySearch

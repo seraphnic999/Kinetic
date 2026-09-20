@@ -1,0 +1,28 @@
+Draw icons to match the attached reference image, but these ones are SOLID
+FILLED shapes rather than line art - they are used very small, where a thin
+line disappears.
+
+- Solid filled silhouettes. Any internal detail is cut out of the shape as a
+  hole, not drawn as a line.
+- Simple and plain. No shading, no gradients.
+- Draw each icon as large as it will go in its canvas, centred.
+- One icon per file.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- One <path> with fill="currentColor" and fill-rule="evenodd", no stroke
+- No transform attributes - bake positions into the coordinates
+- Filename is the icon name exactly, e.g. statusComplete.svg
+
+DRAW THESE 9:
+
+tabTrainActive   a barbell seen from the front, solid
+tabStatsActive   three bars of increasing height on a baseline, solid
+tabBodyActive    a bathroom scale, solid, with the display cut out as a hole
+tabYouActive     a head and shoulders, solid
+statusPending    a thick open ring with a large empty centre
+statusPartial    a filled disc with a wedge removed, like a pie chart
+statusComplete   a filled disc with a tick cut out of it
+statusSkipped    a filled disc with a horizontal bar cut out of it
+bolt             a lightning bolt, solid, with straight edges

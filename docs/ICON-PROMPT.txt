@@ -1,0 +1,36 @@
+Draw icons in exactly the style of the attached reference image: simple,
+thin-line pictograms of the human body.
+
+- Line art only. Every shape is an open stroke with rounded ends, the way the
+  reference draws them - a torso is two side lines and a shoulder line that
+  simply stop. No filled shapes, no closed outlines around a body part, no
+  shading.
+- A head, where there is one, is a separate empty circle with a small gap above
+  the shoulders. Never a face.
+- Four to eight short internal lines for muscle detail, and no more.
+- Draw each icon as large as it will go in its canvas, centred.
+- One icon per file.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- fill="none", stroke="currentColor", stroke-width="1.5",
+  stroke-linecap="round", stroke-linejoin="round"
+- Any number of <path>, <circle>, <line>, <polyline> elements
+- No transform attributes - bake positions into the coordinates
+- Filename is the icon name exactly, e.g. bodyChest.svg
+
+DRAW THESE EIGHT
+
+bodyChest       front torso, chest muscles, no abs
+bodyBack        back torso, V-taper, spine line and lat lines
+bodyShoulders   shoulders and traps only, cropped above the ribs
+bodyArmsFront   figure with both arms raised and flexed
+bodyArmsBack    one arm raised overhead and bent back at the elbow
+bodyLegs        legs from hip to feet, front view
+bodyCore        midsection only, ribs to hips, abs grid
+bodyOther       whole standing figure, arms out
+
+Make the eight clearly different from each other at small size. In particular:
+bodyChest has no abs and bodyCore has no chest; bodyArmsBack is one arm where
+bodyArmsFront is two.

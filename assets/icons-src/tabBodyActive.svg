@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor" stroke="none">
+
+  <path fill-rule="evenodd" clip-rule="evenodd" d="
+    M24 13
+    H40
+    C47.2 13 52 18.2 52 25
+    V39
+    C52 45.8 47.2 51 40 51
+    H24
+    C16.8 51 12 45.8 12 39
+    V25
+    C12 18.2 16.8 13 24 13
+    Z
+
+    M32 20.5
+    A4.8 4.8 0 1 0 32.01 20.5
+    Z
+  "/>
+
+</svg>
