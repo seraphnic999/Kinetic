@@ -1316,13 +1316,26 @@ export default function TrainingScreen({ navigation, route }) {
       const durationSecs = st.setStartedAt
         ? Math.round((Date.now() - st.setStartedAt) / 1000)
         : undefined;
+      // A combo's weights live in subWeights/subReps, not weight/reps — logging
+      // st.weight for one wrote `undefined`, which is why no historic combo
+      // could be reconstructed from the timeline. Log what was actually lifted.
+      const load = ex?.type === EXERCISE_TYPES.COMBO
+        ? {
+            subExercises: (ex.subExercises ?? []).map((sub, i) => ({
+              name:   sub.name === 'Other' ? (sub.customName || `Exercise ${i + 1}`) : sub.name,
+              bodySection: sub.bodySection ?? null,
+              weight: st.subWeights?.[i],
+              reps:   st.subReps?.[i],
+            })),
+          }
+        : { weight: st.weight, reps: st.reps };
+
       addEvent('set_done', {
         exerciseName: getExerciseName(ex),
         bodySection:  ex?.bodySection ?? null,
         setNumber:    setsCompleted,
         setsLeft,
-        weight:       st.weight,
-        reps:         st.reps,
+        ...load,
         durationSecs,
       });
       return { ...prev, [id]: { ...st, setsLeft, setsCompleted, status, setStartedAt: null } };

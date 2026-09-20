@@ -637,9 +637,18 @@ parent. Every existing aggregation — volume, progression, body split, PRs —
 picks them up with **no special-casing at all**, because they are just regular
 rows. The parent row stays for "this was one combo of 4 sets".
 
-*Historic combos stay uncounted.* A backfill is possible from the `timeline`
-column (it has the sub weights and reps) and is worth doing once, but it is
-stage 5, not stage 1.
+*Historic combos stay uncounted, permanently.* The original plan was to backfill
+them from the `timeline` column — **that turns out to be impossible.** Checked
+against the live data: 61 combo `set_done` events, **none carrying a weight**.
+The cause is a logging bug — `handleSetDone` recorded `st.weight` and `st.reps`,
+which are `undefined` for a combo, because combo state keeps `subWeights` and
+`subReps` arrays instead. The sub-exercise loads only ever existed in the
+in-memory summary and the per-session CSV; they were never persisted anywhere a
+backfill could reach.
+
+The logging is fixed (a combo `set_done` now records each sub-exercise's own
+load), so future timelines are complete. The 34 historic combo rows keep
+counting as zero volume, and always will.
 
 **b. Volume includes cardio work — separately.** Cardio has no kilograms, so it
 does not join tonnage. It gets its own two derived numbers, both computable from
@@ -1079,7 +1088,7 @@ All six were settled on 2026-09-19. Nothing in this document is open.
 | **2** | Display face | **Barlow Semi Condensed.** §3.1 stands as written. |
 | **3** | Body-section glyphs | ~~Equipment~~ → ~~anatomy in context~~ → ~~isolated muscles~~ → **simplified figures and torsos in open line.** Settled against a client-approved reference set, measured rather than described. |
 | **4** | Streak unit | **Consecutive weeks** with ≥1 session. §5.5 stands. |
-| **5** | Historic combo backfill | **Runs**, in stage 5. Pre-migration combo volume is reconstructed from `timeline`; historic tonnage and body-split figures will move upward when it lands. §5.2a. |
+| **5** | Historic combo backfill | ~~Runs in stage 5.~~ **Cannot be done** — verified against the live data in stage 4. The combo loads were never persisted anywhere a backfill could reach; see §5.2a. Historic combo volume stays zero. The logging bug behind it is fixed, so this cannot recur. |
 | **6** | Quick session | **Speed dial** on the Train tab. §7.1 stands. |
 
 **Decision 3 moved twice.** It originally chose equipment over anatomy, on the

@@ -7,7 +7,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "sync:analytics": "node scripts/sync-analytics.mjs",
+    "check:analytics": "node scripts/sync-analytics.mjs --check",
+    "prestart": "npm run check:analytics"
   },
   "dependencies": {
     "@expo-google-fonts/barlow-semi-condensed": "^0.4.1",

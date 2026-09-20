@@ -1,11 +1,3 @@
-// GENERATED FILE — do not edit.
-//
-// Source of truth: shared/analytics.js
-// Regenerate:      npm run sync:analytics
-//
-// Edits here are lost on the next sync, and `npm run check:analytics` fails
-// the build if this file and the source have drifted.
-
 /**
  * Kinetic analytics — the single source of truth for every number and chart in
  * the app and on the web dashboard.

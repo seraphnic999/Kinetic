@@ -1,25 +1,36 @@
+// GENERATED FILE — do not edit.
+//
+// Source of truth: shared/analytics.js
+// Regenerate:      npm run sync:analytics
+//
+// Edits here are lost on the next sync, and `npm run check:analytics` fails
+// the build if this file and the source have drifted.
+
 /**
- * Dashboard analytics — the single source of truth for every number and chart
- * shown on a Kinetic dashboard.
+ * Kinetic analytics — the single source of truth for every number and chart in
+ * the app and on the web dashboard.
  *
- * ⚠ MIRRORED FILE: this is a copy of `src/utils/analytics.js` — the Next.js app
- * has its own package root and cannot import across it. Any change here must be
- * applied there too, or the phone and the web dashboard will drift apart again.
+ * ⚠ THIS IS THE ORIGINAL. `src/utils/analytics.js` and `web/lib/analytics.js`
+ * are generated copies (the Next.js app has its own package root and cannot
+ * import across it, and Metro will not follow a symlink out of the project).
+ * Edit THIS file, then run `npm run sync:analytics`. `npm run check:analytics`
+ * fails if they have drifted, and runs before every export.
  *
- * Week convention: weeks run **Sunday → Saturday**, and a week is identified by
- * the local calendar date of its Sunday ('YYYY-MM-DD').
+ * Week convention: weeks run **Sunday → Saturday**, identified by the local
+ * calendar date of their Sunday ('YYYY-MM-DD').
  *
  * Day convention: sessions are bucketed by their **local** calendar day, not
- * the UTC day of `started_at` — a 23:30 workout belongs to the day you trained,
- * not to tomorrow.
+ * the UTC day of `started_at` — a 23:30 workout belongs to the day you trained.
  */
 
 // ─── Shared dashboard windows ─────────────────────────────────────────────────
-// Both dashboards render the same spans, so the two never disagree on "recent".
 export const CHART_WEEKS   = 12;   // weeks of history in the weekly charts
 export const CALENDAR_DAYS = 70;   // days of history in the activity grid
-export const SESSION_LIMIT = 100;  // sessions fetched from Supabase
+export const SESSION_LIMIT = 200;  // sessions fetched from Supabase
 export const RECENT_LIMIT  = 20;   // sessions listed under "Recent sessions"
+
+/** Above this many reps an e1RM formula stops predicting anything. */
+export const E1RM_MAX_REPS = 12;
 
 // ─── Day / week keys ──────────────────────────────────────────────────────────
 
@@ -59,14 +70,11 @@ export const lastWeekKeys = (count = 12) => {
 
 // ─── Formatting ───────────────────────────────────────────────────────────────
 
-/** "Jun 2" — short label for a day key. */
 export const dayLabel = (key) =>
   parseDay(key).toLocaleDateString('en', { month: 'short', day: 'numeric' });
 
-/** A week's label is the date of its Sunday. */
 export const weekLabel = dayLabel;
 
-/** "Jun 2 – Jun 8" — the full Sunday→Saturday span. */
 export const weekRangeLabel = (key) => `${weekLabel(key)} – ${weekLabel(shiftDays(key, 6))}`;
 
 export const fmtDate = (value) =>
@@ -91,112 +99,518 @@ export const fmtVolume = (kg) => {
   return String(Math.round(kg));
 };
 
-// ─── Session shaping ──────────────────────────────────────────────────────────
+/** Tonnage for a headline tile → "12.4 t" below a tonne, "840 kg" above. */
+export const fmtTonnes = (kg) =>
+  kg >= 1000 ? `${(kg / 1000).toFixed(1)} t` : `${Math.round(kg)} kg`;
+
+/** Signed percentage → "+12%" / "−8%" / "—". */
+export const fmtDelta = (pct) => {
+  if (pct == null || !isFinite(pct)) return '—';
+  const r = Math.round(pct);
+  if (r === 0) return '0%';
+  return `${r > 0 ? '+' : '−'}${Math.abs(r)}%`;
+};
+
+// ─── Estimated one-rep max ────────────────────────────────────────────────────
 
 /**
- * Normalise the raw Supabase join into the shape every chart below expects:
- * exercises flattened onto the session and ordered as they were performed.
+ * Epley. Returns null above E1RM_MAX_REPS rather than a number that looks like
+ * data: past a dozen reps the formula stops predicting anything.
+ *
+ * This is what replaces "heaviest weight lifted", which ranked 100kg x 1 above
+ * 90kg x 10 and so answered "did you do a heavy single" rather than "are you
+ * getting stronger".
+ */
+export const e1rm = (weightKg, reps) => {
+  const w = parseFloat(weightKg), r = parseInt(reps, 10);
+  if (!(w > 0) || !(r > 0) || r > E1RM_MAX_REPS) return null;
+  return Math.round(w * (1 + r / 30) * 10) / 10;
+};
+
+// ─── Timeline ─────────────────────────────────────────────────────────────────
+
+/**
+ * The richest data in the app, and until now nothing read it.
+ *
+ * Every session stores a timestamped event list: set starts, set completions
+ * with weight/reps/duration, rest periods. Three numbers fall out of it that a
+ * gym app cannot otherwise know, because it would have to guess when you were
+ * actually working.
+ *
+ *   workSecs  time under load — the sum of completed set durations
+ *   restSecs  rest actually taken, not rest configured
+ *   density   workSecs / session duration
+ *
+ * Sessions recorded before set timing existed have no `durationSecs` on their
+ * set_done events; those return nulls rather than a confident zero.
+ */
+export function deriveTimeline(timeline, totalDurationSecs) {
+  const events = Array.isArray(timeline) ? timeline : [];
+  if (!events.length) return { workSecs: null, restSecs: null, density: null, restCut: null };
+
+  let workSecs = 0, timedSets = 0;
+  let restSecs = 0, restStart = null, restPeriods = 0, restCut = 0;
+
+  for (const e of events) {
+    switch (e?.action) {
+      case 'set_done':
+        if (typeof e.durationSecs === 'number') { workSecs += e.durationSecs; timedSets += 1; }
+        break;
+      case 'rest_start':
+        restStart = e.t;
+        break;
+      case 'rest_end':
+        if (restStart != null && typeof e.t === 'number') {
+          restSecs += Math.max(0, e.t - restStart);
+          restPeriods += 1;
+          if (e.interrupted) restCut += 1;
+        }
+        restStart = null;
+        break;
+      default:
+        break;
+    }
+  }
+
+  const total = totalDurationSecs ?? 0;
+  return {
+    workSecs: timedSets ? workSecs : null,
+    restSecs: restPeriods ? restSecs : null,
+    density:  timedSets && total > 0 ? workSecs / total : null,
+    /** Share of rest periods cut short — a real training variable, thrown away until now. */
+    restCut:  restPeriods ? restCut / restPeriods : null,
+  };
+}
+
+// ─── Session shaping ──────────────────────────────────────────────────────────
+
+/** True for a combo aggregate row — its children carry the real numbers. */
+const isComboParent = (e) => e.exercise_type === 'combo';
+
+/** True for rows that contribute weight x reps tonnage. */
+const isLifting = (e) => e.exercise_type === 'regular';
+
+/**
+ * Normalise the raw Supabase join into the shape every chart expects.
+ *
+ * `exercises` is what you display: top-level rows in performed order, combo
+ * children folded under their parent rather than listed beside it.
+ * `liftingRows` is what you count: every regular row INCLUDING combo children,
+ * which is the whole point of the parent_id migration.
  */
 export const shapeSessions = (rows) =>
-  (rows ?? []).map(s => ({
-    ...s,
-    exercise_count: s.workout_exercises?.length ?? 0,
-    exercises: (s.workout_exercises ?? [])
-      .slice()
-      .sort((a, b) => (a.perf_order ?? 0) - (b.perf_order ?? 0)),
-  }));
+  (rows ?? []).map(s => {
+    const all = (s.workout_exercises ?? []).slice()
+      .sort((a, b) => (a.perf_order ?? 0) - (b.perf_order ?? 0));
+    const children = all.filter(e => e.parent_id);
+    const top = all.filter(e => !e.parent_id);
+    const byParent = new Map();
+    for (const c of children) {
+      if (!byParent.has(c.parent_id)) byParent.set(c.parent_id, []);
+      byParent.get(c.parent_id).push(c);
+    }
+    return {
+      ...s,
+      exercise_count: top.length,
+      exercises: top.map(e => ({ ...e, children: byParent.get(e.id) ?? [] })),
+      liftingRows: all.filter(isLifting),
+    };
+  });
 
-/** Total kg moved in one session: weight × completed sets × reps. */
+/** Total kg moved: weight x completed sets x reps, over every lifting row. */
 export const sessionVolume = (session) =>
-  (session.exercises ?? []).reduce((sum, e) => (
-    e.exercise_type === 'regular'
-      ? sum + (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0)
-      : sum
-  ), 0);
+  (session.liftingRows ?? (session.exercises ?? []).filter(isLifting))
+    .reduce((sum, e) => sum + (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0), 0);
 
-export function computeStats(sessions) {
+/** Completed sets and reps across every lifting row. */
+export const sessionSets = (session) =>
+  (session.liftingRows ?? []).reduce(
+    (a, e) => ({
+      sets: a.sets + (e.sets_completed || 0),
+      reps: a.reps + (e.sets_completed || 0) * (e.reps || 0),
+    }),
+    { sets: 0, reps: 0 },
+  );
+
+/**
+ * Cardio time and distance. Both derivable from columns that already existed
+ * and were aggregated nowhere: distance is speed x time.
+ */
+export const sessionCardio = (session) => {
+  let secs = 0, km = 0;
+  for (const e of session.exercises ?? []) {
+    if (e.exercise_type !== 'intervals') continue;
+    const d = e.duration_secs || 0;
+    secs += d;
+    if (e.speed_kmh) km += (parseFloat(e.speed_kmh) * d) / 3600;
+  }
+  return { cardioSecs: secs, cardioKm: Math.round(km * 10) / 10 };
+};
+
+/** Volume per body section, for the split chart. */
+export const sessionSectionVolume = (session) => {
+  const out = {};
+  for (const e of session.liftingRows ?? []) {
+    const k = e.body_section || 'Other';
+    out[k] = (out[k] ?? 0) + (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0);
+  }
+  return out;
+};
+
+/** The best set of each exercise in a session, by e1RM. */
+export const sessionBestSets = (session) => {
+  const best = new Map();
+  for (const e of session.liftingRows ?? []) {
+    const est = e1rm(e.weight_kg, e.reps);
+    if (est == null) continue;
+    const prev = best.get(e.exercise_name);
+    if (!prev || est > prev.e1rm) {
+      best.set(e.exercise_name, {
+        exercise: e.exercise_name,
+        bodySection: e.body_section ?? null,
+        weightKg: parseFloat(e.weight_kg),
+        reps: e.reps,
+        e1rm: est,
+      });
+    }
+  }
+  return [...best.values()];
+};
+
+/**
+ * Everything derived about one session, computed once and reused by every
+ * chart. This is the layer that did not exist: each screen recomputed its own
+ * subset, and none of them counted combos.
+ */
+export function deriveSession(session) {
+  const { cardioSecs, cardioKm } = sessionCardio(session);
+  const { sets, reps } = sessionSets(session);
   return {
-    count:      sessions.length,
-    totalSecs:  sessions.reduce((sum, s) => sum + (s.duration_secs ?? 0), 0),
-    activeDays: new Set(sessions.map(s => dayKey(s.started_at))).size,
-    totalVolume: sessions.reduce((sum, s) => sum + sessionVolume(s), 0),
+    id: session.id,
+    name: session.name,
+    startedAt: session.started_at,
+    dayKey: dayKey(session.started_at),
+    weekKey: weekKey(session.started_at),
+    durationSecs: session.duration_secs ?? 0,
+    ...deriveTimeline(session.timeline, session.duration_secs),
+    volumeKg: sessionVolume(session),
+    setCount: sets,
+    repCount: reps,
+    cardioSecs,
+    cardioKm,
+    sectionVolume: sessionSectionVolume(session),
+    bestSets: sessionBestSets(session),
+    exerciseCount: session.exercise_count ?? 0,
   };
+}
+
+export const deriveAll = (sessions) => (sessions ?? []).map(deriveSession);
+
+// ─── Headline tiles ───────────────────────────────────────────────────────────
+
+const sumBy = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);
+
+/** Sessions falling inside [from, to) day keys. */
+const inRange = (derived, from, to) => derived.filter(d => d.dayKey >= from && d.dayKey < to);
+
+/** Percentage change, null when the baseline is zero (no honest percentage). */
+const pctChange = (now, before) =>
+  before > 0 ? ((now - before) / before) * 100 : null;
+
+/**
+ * The four headline numbers, each with a window and a comparison.
+ *
+ * What these replace: sessions / total time / active days / kg lifted, all
+ * cumulative over the last N sessions, all monotonically increasing. A number
+ * that can only go up is not information.
+ */
+export function computeHeadline(derived) {
+  const thisWeek = weekKey(new Date());
+  const lastWeek = shiftWeeks(thisWeek, -1);
+  const weekEnd  = shiftDays(thisWeek, 7);
+
+  const cur  = inRange(derived, thisWeek, weekEnd);
+  const prev = inRange(derived, lastWeek, thisWeek);
+
+  const volNow = sumBy(cur, d => d.volumeKg);
+  const volPrev = sumBy(prev, d => d.volumeKg);
+
+  const workNow  = sumBy(cur.filter(d => d.workSecs != null), d => d.workSecs);
+  const totalNow = sumBy(cur.filter(d => d.workSecs != null), d => d.durationSecs);
+
+  return {
+    sessions:      { value: cur.length, delta: cur.length - prev.length, window: 'this week' },
+    volumeKg:      { value: volNow, deltaPct: pctChange(volNow, volPrev), window: 'this week' },
+    underLoad:     { workSecs: workNow || null, totalSecs: totalNow || null,
+                     density: totalNow > 0 ? workNow / totalNow : null },
+    streak:        computeStreak(derived),
+  };
+}
+
+/**
+ * Consecutive weeks with at least one session, and the best such run.
+ *
+ * Weeks, not days, deliberately: a daily streak punishes rest days, which is
+ * exactly backwards for lifting, and is the most common way a fitness app makes
+ * you feel bad for training correctly.
+ */
+export function computeStreak(derived) {
+  const weeks = new Set(derived.map(d => d.weekKey));
+  if (!weeks.size) return { current: 0, best: 0 };
+
+  // Current run ends this week, or last week if this one has not started yet.
+  const thisWeek = weekKey(new Date());
+  let cursor = weeks.has(thisWeek) ? thisWeek : shiftWeeks(thisWeek, -1);
+  let current = 0;
+  while (weeks.has(cursor)) { current += 1; cursor = shiftWeeks(cursor, -1); }
+
+  const sorted = [...weeks].sort();
+  let best = 0, run = 0, prev = null;
+  for (const w of sorted) {
+    run = (prev && shiftWeeks(prev, 1) === w) ? run + 1 : 1;
+    best = Math.max(best, run);
+    prev = w;
+  }
+  return { current, best: Math.max(best, current) };
 }
 
 // ─── Charts ───────────────────────────────────────────────────────────────────
 
-/**
- * Weekly training frequency and total lifted volume over the last `weeks`
- * Sunday→Saturday weeks, plus the list of regular exercises seen in the data.
- * Every series is a `{ key, label, value }[]` with one entry per week.
- */
-export function computeCharts(sessions, weeks = 12) {
-  const weekKeys = lastWeekKeys(weeks);
-  const freq   = Object.fromEntries(weekKeys.map(k => [k, 0]));
-  const volume = Object.fromEntries(weekKeys.map(k => [k, 0]));
+/** Weekly frequency and tonnage, plus a rolling average over the tonnage. */
+export function computeCharts(derived, weeks = CHART_WEEKS) {
+  const keys = lastWeekKeys(weeks);
+  const freq = Object.fromEntries(keys.map(k => [k, 0]));
+  const vol  = Object.fromEntries(keys.map(k => [k, 0]));
 
-  sessions.forEach(s => {
-    const wk = weekKey(s.started_at);
-    if (freq[wk] === undefined) return;
-    freq[wk] += 1;
-    volume[wk] += sessionVolume(s);
+  for (const d of derived) {
+    if (freq[d.weekKey] === undefined) continue;
+    freq[d.weekKey] += 1;
+    vol[d.weekKey] += d.volumeKg;
+  }
+
+  const volumeData = keys.map(k => ({ key: k, label: weekLabel(k), value: Math.round(vol[k]) }));
+
+  // Weekly tonnage is noisy; the 4-week average is the signal.
+  const rolling = volumeData.map((_, i) => {
+    const slice = volumeData.slice(Math.max(0, i - 3), i + 1);
+    return {
+      key: volumeData[i].key,
+      label: volumeData[i].label,
+      value: Math.round(slice.reduce((a, d) => a + d.value, 0) / slice.length),
+    };
   });
 
   const names = new Set();
-  sessions.forEach(s => (s.exercises ?? []).forEach(e => {
-    if (e.exercise_type === 'regular' && e.exercise_name) names.add(e.exercise_name);
-  }));
+  for (const d of derived) for (const b of d.bestSets) names.add(b.exercise);
 
   return {
-    freqData:   weekKeys.map(k => ({ key: k, label: weekLabel(k), value: freq[k] })),
-    volumeData: weekKeys.map(k => ({ key: k, label: weekLabel(k), value: Math.round(volume[k]) })),
+    freqData: keys.map(k => ({ key: k, label: weekLabel(k), value: freq[k] })),
+    volumeData,
+    volumeAvgData: rolling,
     exerciseNames: [...names].sort(),
   };
 }
 
-/** Heaviest weight lifted per day for one exercise, oldest first. */
-export function computeProgression(sessions, exerciseName) {
+/** e1RM per day for one exercise, with the raw best set alongside. */
+export function computeProgression(derived, exerciseName) {
   if (!exerciseName) return [];
-  const byDay = {};
-  sessions.forEach(s => {
-    const day = dayKey(s.started_at);
-    (s.exercises ?? []).forEach(e => {
-      if (e.exercise_name !== exerciseName || e.exercise_type !== 'regular' || !e.weight_kg) return;
-      byDay[day] = Math.max(byDay[day] ?? 0, parseFloat(e.weight_kg));
-    });
-  });
-  return Object.entries(byDay)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([day, value]) => ({ key: day, label: dayLabel(day), value }));
+  const byDay = new Map();
+  for (const d of derived) {
+    for (const b of d.bestSets) {
+      if (b.exercise !== exerciseName) continue;
+      const prev = byDay.get(d.dayKey);
+      if (!prev || b.e1rm > prev.value) {
+        byDay.set(d.dayKey, {
+          key: d.dayKey, label: dayLabel(d.dayKey),
+          value: b.e1rm, raw: b.weightKg, reps: b.reps,
+        });
+      }
+    }
+  }
+  return [...byDay.values()].sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /**
- * Body metrics are logged per day, so the dashboard shows the average of every
- * entry that falls inside each Sunday→Saturday week. Weeks with no entry for a
- * field are dropped from that field's series.
+ * Personal records: the first time each exercise reached its current best
+ * e1RM, newest first, with the previous best for context.
  */
-export function computeMetricCharts(rows, weeks = 12) {
-  const weekKeys = lastWeekKeys(weeks);
+export function computeRecords(derived, limit = 5) {
+  const ordered = [...derived].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
+  const best = new Map();   // exercise -> { e1rm, dayKey }
+  const records = [];
+
+  for (const d of ordered) {
+    for (const b of d.bestSets) {
+      const prev = best.get(b.exercise);
+      if (!prev || b.e1rm > prev.e1rm) {
+        if (prev) {
+          records.push({
+            exercise: b.exercise, bodySection: b.bodySection,
+            e1rm: b.e1rm, weightKg: b.weightKg, reps: b.reps,
+            dayKey: d.dayKey, gain: Math.round((b.e1rm - prev.e1rm) * 10) / 10,
+            sinceDayKey: prev.dayKey,
+          });
+        } else {
+          records.push({
+            exercise: b.exercise, bodySection: b.bodySection,
+            e1rm: b.e1rm, weightKg: b.weightKg, reps: b.reps,
+            dayKey: d.dayKey, gain: null, sinceDayKey: null,
+          });
+        }
+        best.set(b.exercise, { e1rm: b.e1rm, dayKey: d.dayKey });
+      }
+    }
+  }
+  return records.reverse().slice(0, limit);
+}
+
+/** Volume share per body section over the last `days`, largest first. */
+export function computeBodySplit(derived, days = 28) {
+  const from = shiftDays(isoDay(new Date()), -days + 1);
+  const totals = {};
+  for (const d of derived) {
+    if (d.dayKey < from) continue;
+    for (const [k, v] of Object.entries(d.sectionVolume)) totals[k] = (totals[k] ?? 0) + v;
+  }
+  const sum = Object.values(totals).reduce((a, b) => a + b, 0);
+  return Object.entries(totals)
+    .map(([section, volumeKg]) => ({
+      section, volumeKg,
+      pct: sum > 0 ? Math.round((volumeKg / sum) * 100) : 0,
+    }))
+    .sort((a, b) => b.volumeKg - a.volumeKg);
+}
+
+/** Lifting time versus cardio time over the last `days`. */
+export function computeLiftVsCardio(derived, days = 28) {
+  const from = shiftDays(isoDay(new Date()), -days + 1);
+  const rows = derived.filter(d => d.dayKey >= from);
+  const cardio = sumBy(rows, d => d.cardioSecs);
+  const lift = Math.max(0, sumBy(rows, d => d.durationSecs) - cardio);
+  const total = lift + cardio;
+  return {
+    liftSecs: lift, cardioSecs: cardio,
+    cardioKm: Math.round(sumBy(rows, d => d.cardioKm) * 10) / 10,
+    liftPct: total > 0 ? Math.round((lift / total) * 100) : 0,
+  };
+}
+
+/** Sessions grouped into Sunday→Saturday weeks, newest first, with totals. */
+export function groupByWeek(derived) {
+  const groups = new Map();
+  for (const d of [...derived].sort((a, b) => b.dayKey.localeCompare(a.dayKey))) {
+    if (!groups.has(d.weekKey)) groups.set(d.weekKey, []);
+    groups.get(d.weekKey).push(d);
+  }
+  return [...groups.entries()].map(([key, sessions]) => ({
+    key,
+    label: weekRangeLabel(key),
+    sessions,
+    volumeKg: sumBy(sessions, s => s.volumeKg),
+    count: sessions.length,
+  }));
+}
+
+/** Everything the Exercise Detail screen shows about one exercise. */
+export function computeExerciseDetail(derived, exerciseName) {
+  const history = [];
+  let bestSet = null;
+
+  for (const d of [...derived].sort((a, b) => b.dayKey.localeCompare(a.dayKey))) {
+    const rows = (d.bestSets ?? []).filter(b => b.exercise === exerciseName);
+    if (!rows.length) continue;
+    const top = rows.reduce((a, b) => (b.e1rm > a.e1rm ? b : a));
+    history.push({ dayKey: d.dayKey, label: dayLabel(d.dayKey), ...top });
+    if (!bestSet || top.e1rm > bestSet.e1rm) bestSet = { ...top, dayKey: d.dayKey };
+  }
+
+  const from30 = shiftDays(isoDay(new Date()), -29);
+  const volume30 = derived
+    .filter(d => d.dayKey >= from30)
+    .reduce((sum, d) => sum + (d.sectionVolume ? 0 : 0) + 0, 0);
+
+  const progression = computeProgression(derived, exerciseName);
+  const first = progression[0]?.value ?? null;
+  const last = progression[progression.length - 1]?.value ?? null;
+
+  return {
+    exercise: exerciseName,
+    bestSet,
+    last: history[0] ?? null,
+    sessions: history.length,
+    progression,
+    e1rmNow: last,
+    e1rmGain: first != null && last != null ? Math.round((last - first) * 10) / 10 : null,
+    history,
+    volume30,
+  };
+}
+
+// ─── Body metrics ─────────────────────────────────────────────────────────────
+
+/**
+ * Body metrics are logged per day; the dashboard averages every entry inside
+ * each Sunday→Saturday week. Weeks with no entry for a field are dropped.
+ */
+export function computeMetricCharts(rows, weeks = CHART_WEEKS) {
+  const keys = lastWeekKeys(weeks);
   const fields = ['weight_kg', 'waist_cm', 'diet_pct'];
   const sums = {}, counts = {};
-  fields.forEach(f => {
-    sums[f]   = Object.fromEntries(weekKeys.map(k => [k, 0]));
-    counts[f] = Object.fromEntries(weekKeys.map(k => [k, 0]));
-  });
+  for (const f of fields) {
+    sums[f]   = Object.fromEntries(keys.map(k => [k, 0]));
+    counts[f] = Object.fromEntries(keys.map(k => [k, 0]));
+  }
 
-  (rows ?? []).forEach(r => {
+  for (const r of rows ?? []) {
     const wk = weekKey(parseDay(r.week_date));
-    if (counts.weight_kg[wk] === undefined) return;
-    fields.forEach(f => {
+    if (counts.weight_kg[wk] === undefined) continue;
+    for (const f of fields) {
       if (r[f] != null) { sums[f][wk] += parseFloat(r[f]); counts[f][wk] += 1; }
-    });
-  });
+    }
+  }
 
-  const build = f => weekKeys
-    .filter(k => counts[f][k] > 0)
+  const build = f => keys.filter(k => counts[f][k] > 0)
     .map(k => ({ key: k, label: weekLabel(k), value: Math.round((sums[f][k] / counts[f][k]) * 10) / 10 }));
 
   return { weightData: build('weight_kg'), waistData: build('waist_cm'), dietData: build('diet_pct') };
+}
+
+/**
+ * The compact body strip on the Stats tab: latest value plus the change over
+ * `days`, so the dashboard states one window instead of quietly using a
+ * different one from the Body tab.
+ */
+export function computeBodyStrip(rows, days = 30) {
+  const sorted = [...(rows ?? [])].sort((a, b) => a.week_date.localeCompare(b.week_date));
+  const from = shiftDays(isoDay(new Date()), -days + 1);
+
+  const field = (f, decimals = 1) => {
+    const withValue = sorted.filter(r => r[f] != null);
+    if (!withValue.length) return null;
+    const latest = withValue[withValue.length - 1];
+    const baseline = withValue.find(r => r.week_date >= from) ?? withValue[0];
+    const round = v => Math.round(parseFloat(v) * 10 ** decimals) / 10 ** decimals;
+    const delta = round(latest[f] - baseline[f]);
+    return {
+      value: round(latest[f]),
+      date: latest.week_date,
+      delta: baseline === latest ? null : delta,
+      days,
+    };
+  };
+
+  // Diet is an adherence percentage, so a 7-day average says more than the
+  // last value — one bad day should not read as a trend.
+  const recentDiet = sorted.filter(r => r.diet_pct != null && r.week_date >= shiftDays(isoDay(new Date()), -6));
+  const dietAvg = recentDiet.length
+    ? Math.round(recentDiet.reduce((a, r) => a + r.diet_pct, 0) / recentDiet.length)
+    : null;
+
+  return {
+    weight: field('weight_kg'),
+    waist: field('waist_cm'),
+    diet: dietAvg == null ? null : { value: dietAvg, days: 7 },
+  };
 }
 
 // ─── Activity calendar ────────────────────────────────────────────────────────
@@ -205,31 +619,41 @@ export const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 /**
  * Rows of 7 days for the activity grid. Every row is a full Sunday→Saturday
- * week: the range is padded back to the Sunday on or before `days` ago and
- * forward to the Saturday that closes the current week, so no row is ragged.
- * Days after today are flagged `future` for the caller to dim.
+ * week. Days carry their volume so the grid can encode intensity rather than
+ * mere presence.
  */
-export function buildCalendar(sessions, days = 70) {
-  const activeDays = new Set((sessions ?? []).map(s => dayKey(s.started_at)));
+export function buildCalendar(derived, days = CALENDAR_DAYS) {
+  const byDay = new Map();
+  for (const d of derived ?? []) {
+    byDay.set(d.dayKey, (byDay.get(d.dayKey) ?? 0) + d.volumeKg);
+  }
+  const volumes = [...byDay.values()].filter(v => v > 0).sort((a, b) => a - b);
+  const p = q => volumes.length ? volumes[Math.floor((volumes.length - 1) * q)] : 0;
+  const t1 = p(0.33), t2 = p(0.66);
 
   const today = new Date(); today.setHours(12, 0, 0, 0);
   const todayKey = isoDay(today);
-
   const firstShown = new Date(today); firstShown.setDate(firstShown.getDate() - days + 1);
-  const firstDay = weekKey(firstShown);                  // Sunday of the first week
-  const lastDay  = shiftDays(weekKey(today), 6);         // Saturday of the current week
+  const firstDay = weekKey(firstShown);
+  const lastDay = shiftDays(weekKey(today), 6);
 
   const weeks = [];
   let row = [];
   for (let key = firstDay; ; key = shiftDays(key, 1)) {
-    row.push({ key, date: parseDay(key), active: activeDays.has(key), future: key > todayKey });
+    const vol = byDay.get(key) ?? 0;
+    row.push({
+      key, date: parseDay(key), active: vol > 0, volumeKg: vol,
+      // 0 = none, 1..3 = light/medium/heavy for that person's own history
+      level: vol === 0 ? 0 : vol <= t1 ? 1 : vol <= t2 ? 2 : 3,
+      future: key > todayKey,
+    });
     if (row.length === 7) { weeks.push(row); row = []; }
     if (key === lastDay) break;
   }
   return weeks;
 }
 
-// ─── Exercise detail line ─────────────────────────────────────────────────────
+// ─── Exercise detail lines ────────────────────────────────────────────────────
 
 /** One-line summary of a stored exercise row, shared by both session lists. */
 export function exerciseDetail(e) {
@@ -250,14 +674,10 @@ export function exerciseDetail(e) {
   return '';
 }
 
-// ─── Session-template exercise line ───────────────────────────────────────────
-
 /**
  * One-line summary of an exercise inside a saved *training session template*
- * (the phone's local session shape, camelCased — not a synced `workout_exercises`
- * row, which `exerciseDetail` above handles). Shared by the phone's session
- * editor and the web dashboard's session list so both read a template the same
- * way.
+ * (the phone's local shape, camelCased — not a synced `workout_exercises` row,
+ * which `exerciseDetail` above handles).
  */
 export function templateExerciseLabel(ex) {
   if (ex.type === 'warmup')
@@ -276,7 +696,7 @@ export function templateExerciseLabel(ex) {
     const parts = [...new Set(
       (ex.subExercises ?? [])
         .map(s => (s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection))
-        .filter(Boolean)
+        .filter(Boolean),
     )].join(' / ');
     return parts ? `${parts} — ${ex.sets} sets` : `Combo — ${ex.sets} sets`;
   }
@@ -289,4 +709,18 @@ export function templateExerciseLabel(ex) {
     : (ex.name || 'Unnamed');
   const details = `${ex.weight}kg • ${ex.sets}×${ex.reps}`;
   return section ? `${section} — ${name} — ${details}` : `${name} — ${details}`;
+}
+
+// ─── Legacy names ─────────────────────────────────────────────────────────────
+// The old dashboards called these; kept so nothing breaks mid-migration.
+
+/** @deprecated use computeHeadline */
+export function computeStats(sessions) {
+  const derived = deriveAll(sessions);
+  return {
+    count: derived.length,
+    totalSecs: sumBy(derived, d => d.durationSecs),
+    activeDays: new Set(derived.map(d => d.dayKey)).size,
+    totalVolume: sumBy(derived, d => d.volumeKg),
+  };
 }

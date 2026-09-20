@@ -113,3 +113,18 @@ CREATE POLICY "own metrics"   ON body_metrics
 
 CREATE POLICY "own training sessions" ON training_sessions
   FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- ── MIGRATION: combo sub-exercises become real rows ───────────────────────────
+-- Applied 2026-09-20. See docs/DESIGN.md §5.2a.
+--
+-- A combo used to write one aggregate row and keep its per-sub weights and reps
+-- only in the session timeline, so combo volume counted as zero and a bench
+-- press done inside a combo was invisible to progression, records and the body
+-- split. Children are now written as ordinary 'regular' rows carrying a parent
+-- link, which every aggregation picks up with no special-casing.
+ALTER TABLE workout_exercises
+  ADD COLUMN IF NOT EXISTS parent_id UUID
+  REFERENCES workout_exercises(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS workout_exercises_parent_idx
+  ON workout_exercises (parent_id);
