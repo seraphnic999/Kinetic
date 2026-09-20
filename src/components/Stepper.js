@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { Colors, Typography, Spacing, Radius } from '../theme';
+import { Icon } from './Icon';
 
 /**
  * Numeric stepper with +/- buttons and editable input.
@@ -50,7 +50,7 @@ export function Stepper({
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="remove" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Icon name="minus" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
         </TouchableOpacity>
 
         <TextInput
@@ -72,7 +72,7 @@ export function Stepper({
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="add" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Icon name="add" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
         </TouchableOpacity>
       </View>
     </View>

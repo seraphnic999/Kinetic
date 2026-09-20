@@ -5,8 +5,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
 import { signOut as signOutAccount } from '../hooks/useAuth';
 import { PickerModal, PickerField } from '../components/PickerModal';
@@ -143,7 +143,7 @@ function LineChart({ data, color = Colors.primary, unit = 'kg' }) {
 function StatCard({ icon, value, label, color = Colors.primary }) {
   return (
     <View style={st.card}>
-      <Ionicons name={icon} size={22} color={color} />
+      <Icon name={icon} size={IconSize.row} color={color} />
       <Text style={[st.value, { color }]}>{value}</Text>
       <Text style={st.label}>{label}</Text>
     </View>
@@ -212,7 +212,7 @@ function SessionRow({ session, expanded, onPress }) {
             {session.exercise_count > 0 ? ` · ${session.exercise_count} exercise${session.exercise_count>1?'s':''}` : ''}
           </Text>
         </View>
-        <Ionicons name={expanded?'chevron-up':'chevron-down'} size={18} color={Colors.textMuted} />
+        <Icon name={expanded?'chevronUp':'chevronDown'} size={IconSize.meta} color={Colors.textMuted} />
       </View>
       {expanded && (session.exercises ?? []).length > 0 && (
         <View style={sr.exercises}>
@@ -249,7 +249,7 @@ function ChartCard({ title, icon, subtitle, children, empty }) {
   return (
     <View style={cc.card}>
       <View style={cc.header}>
-        <Ionicons name={icon} size={16} color={Colors.textSecondary} />
+        <Icon name={icon} size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={cc.title}>{title}</Text>
         {subtitle ? <Text style={cc.subtitle}>{subtitle}</Text> : null}
       </View>
@@ -282,14 +282,14 @@ function ExerciseProgression({ sessions, exerciseNames }) {
 
   if (!exerciseNames.length) {
     return (
-      <ChartCard title="Exercise progression" icon="trending-up-outline" empty />
+      <ChartCard title="Exercise progression" icon="trendUp" empty />
     );
   }
 
   return (
     <ChartCard
       title="Exercise progression"
-      icon="trending-up-outline"
+      icon="trendUp"
       subtitle="max weight per session"
     >
       <View style={{ marginBottom: Spacing.md }}>
@@ -399,11 +399,11 @@ export default function DashboardScreen({ navigation }) {
       {/* Header */}
       <View style={[ds.header, { paddingTop: insets.top + Spacing.sm }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={ds.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={ds.title}>Dashboard</Text>
         <TouchableOpacity onPress={signOut} style={ds.signOutBtn}>
-          <Ionicons name="log-out-outline" size={22} color={Colors.textSecondary} />
+          <Icon name="signOut" size={IconSize.row} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -417,16 +417,16 @@ export default function DashboardScreen({ navigation }) {
         {/* ── Stats ── */}
         {stats && (
           <View style={ds.statsRow}>
-            <StatCard icon="barbell-outline"  value={stats.count}                  label="Sessions"    color={Colors.primary} />
-            <StatCard icon="time-outline"     value={fmtDur(stats.totalSecs)}      label="Total time"  color={Colors.blue} />
-            <StatCard icon="calendar-outline" value={stats.activeDays}             label="Active days" color={Colors.gold} />
-            <StatCard icon="trending-up-outline" value={fmtVolume(stats.totalVolume)} label="kg lifted" color={Colors.amber} />
+            <StatCard icon="barbell"  value={stats.count}                  label="Sessions"    color={Colors.primary} />
+            <StatCard icon="clock"     value={fmtDur(stats.totalSecs)}      label="Total time"  color={Colors.blue} />
+            <StatCard icon="calendar" value={stats.activeDays}             label="Active days" color={Colors.gold} />
+            <StatCard icon="trendUp" value={fmtVolume(stats.totalVolume)} label="kg lifted" color={Colors.amber} />
           </View>
         )}
 
         {!hasData && (
           <View style={ds.empty}>
-            <Ionicons name="barbell-outline" size={44} color={Colors.textMuted} />
+            <Icon name="barbell" size={IconSize.section} color={Colors.textMuted} />
             <Text style={ds.emptyTxt}>No synced sessions yet.{'\n'}Complete a workout to see your dashboard.</Text>
           </View>
         )}
@@ -446,7 +446,7 @@ export default function DashboardScreen({ navigation }) {
               <Text style={ds.sectionTitle}>Charts</Text>
               <ChartCard
                 title="Training frequency"
-                icon="pulse-outline"
+                icon="intervals"
                 subtitle="workouts per week"
                 empty={charts?.freqData?.every(d => d.value === 0)}
               >
@@ -463,7 +463,7 @@ export default function DashboardScreen({ navigation }) {
               {hasVolume && (
                 <ChartCard
                   title="Total volume"
-                  icon="barbell-outline"
+                  icon="barbell"
                   subtitle="kg lifted per week"
                 >
                   <BarChart
@@ -479,17 +479,17 @@ export default function DashboardScreen({ navigation }) {
 
               {/* ── Body metrics (weekly averages) ── */}
               {metricCharts?.weightData?.length >= 2 && (
-                <ChartCard title="Weight" icon="body-outline" subtitle="weekly avg · kg">
+                <ChartCard title="Weight" icon="bodyProfile" subtitle="weekly avg · kg">
                   <LineChart data={metricCharts.weightData} color={Colors.blue} />
                 </ChartCard>
               )}
               {metricCharts?.waistData?.length >= 2 && (
-                <ChartCard title="Waist" icon="resize-outline" subtitle="weekly avg · cm">
+                <ChartCard title="Waist" icon="tape" subtitle="weekly avg · cm">
                   <LineChart data={metricCharts.waistData} color={Colors.amber} unit="cm" />
                 </ChartCard>
               )}
               {metricCharts?.dietData?.length >= 2 && (
-                <ChartCard title="Diet adherence" icon="restaurant-outline" subtitle="weekly avg · %">
+                <ChartCard title="Diet adherence" icon="diet" subtitle="weekly avg · %">
                   <LineChart data={metricCharts.dietData} color={Colors.gold} unit="%" />
                 </ChartCard>
               )}

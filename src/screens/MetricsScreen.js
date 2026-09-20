@@ -5,9 +5,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
 import { PickerModal, PickerField } from '../components/PickerModal';
 
@@ -24,9 +24,9 @@ const PERIODS = [
 
 // ─── Metric type definitions ─────────────────────────────────────────────────
 const METRICS = {
-  weight: { key: 'weight', label: 'Weight', field: 'weight_kg', unit: 'kg',  color: Colors.blue,  icon: 'body-outline',       decimal: true,  max: 999 },
-  waist:  { key: 'waist',  label: 'Waist',  field: 'waist_cm',  unit: 'cm',  color: Colors.amber, icon: 'resize-outline',     decimal: true,  max: 999 },
-  diet:   { key: 'diet',   label: 'Diet',   field: 'diet_pct',  unit: '%',   color: Colors.gold,  icon: 'restaurant-outline', decimal: false, max: 100 },
+  weight: { key: 'weight', label: 'Weight', field: 'weight_kg', unit: 'kg',  color: Colors.blue,  icon: 'bodyProfile',       decimal: true,  max: 999 },
+  waist:  { key: 'waist',  label: 'Waist',  field: 'waist_cm',  unit: 'cm',  color: Colors.amber, icon: 'tape',     decimal: true,  max: 999 },
+  diet:   { key: 'diet',   label: 'Diet',   field: 'diet_pct',  unit: '%',   color: Colors.gold,  icon: 'diet', decimal: false, max: 100 },
 };
 const METRIC_OPTIONS = Object.values(METRICS).map(m => ({ key: m.key, label: m.label }));
 
@@ -108,7 +108,7 @@ function ChartCard({ title, icon, color, data, unit, domain, latest }) {
   return (
     <View style={cc.card}>
       <View style={cc.header}>
-        <Ionicons name={icon} size={15} color={color} />
+        <Icon name={icon} size={IconSize.meta} color={color} />
         <Text style={cc.title}>{title}</Text>
         {latest != null && <Text style={[cc.latest, { color }]}>{latest}{unit}</Text>}
       </View>
@@ -269,7 +269,7 @@ export default function MetricsScreen({ navigation }) {
     >
       <View style={[s.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={s.title}>Body Metrics</Text>
         <View style={{ width: 40 }} />
@@ -297,7 +297,7 @@ export default function MetricsScreen({ navigation }) {
             />
 
             <TouchableOpacity style={s.dateField} onPress={openDatePicker} activeOpacity={0.7}>
-              <Ionicons name="calendar-outline" size={18} color={Colors.textSecondary} />
+              <Icon name="calendar" size={IconSize.meta} color={Colors.textSecondary} />
               <Text style={s.dateFieldTxt}>{longDate(selectedDate)}</Text>
               <Text style={s.dateFieldChange}>Change</Text>
             </TouchableOpacity>
@@ -337,7 +337,7 @@ export default function MetricsScreen({ navigation }) {
             <TouchableOpacity style={s.saveBtn} onPress={save} activeOpacity={0.8} disabled={saving}>
               {saving
                 ? <ActivityIndicator color={Colors.background} size="small" />
-                : <><Ionicons name="checkmark" size={20} color={Colors.background} />
+                : <><Icon name="check" size={IconSize.meta} color={Colors.background} />
                     <Text style={s.saveTxt}>{hasEntryForDate ? 'Update Entry' : 'Save Entry'}</Text></>
               }
             </TouchableOpacity>
@@ -351,17 +351,17 @@ export default function MetricsScreen({ navigation }) {
             <PeriodSelector value={period} onChange={setPeriod} />
 
             {chartData.weight.length >= 2 && (
-              <ChartCard title="Weight" icon="body-outline" color={Colors.blue}
+              <ChartCard title="Weight" icon="bodyProfile" color={Colors.blue}
                 data={chartData.weight} unit=" kg"
                 latest={chartData.weight.at(-1)?.value.toFixed(1)} />
             )}
             {chartData.waist.length >= 2 && (
-              <ChartCard title="Waist" icon="resize-outline" color={Colors.amber}
+              <ChartCard title="Waist" icon="tape" color={Colors.amber}
                 data={chartData.waist} unit=" cm"
                 latest={chartData.waist.at(-1)?.value.toFixed(1)} />
             )}
             {chartData.diet.length >= 2 && (
-              <ChartCard title="Diet adherence" icon="restaurant-outline" color={Colors.gold}
+              <ChartCard title="Diet adherence" icon="diet" color={Colors.gold}
                 data={chartData.diet} unit="%" domain={[0, 100]}
                 latest={chartData.diet.at(-1)?.value} />
             )}
@@ -370,7 +370,7 @@ export default function MetricsScreen({ navigation }) {
 
         {!hasAnyHistory && (
           <View style={s.empty}>
-            <Ionicons name="bar-chart-outline" size={40} color={Colors.textMuted} />
+            <Icon name="chartBar" size={IconSize.section} color={Colors.textMuted} />
             <Text style={s.emptyTxt}>Charts appear after logging the same metric{'\n'}on at least two different days.</Text>
           </View>
         )}

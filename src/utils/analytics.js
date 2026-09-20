@@ -262,15 +262,15 @@ export function exerciseDetail(e) {
  */
 export function templateExerciseLabel(ex) {
   if (ex.type === 'warmup')
-    return `🔥 Warmup — ${ex.warmupType} • ${fmtSecs(ex.duration ?? 180)}`;
+    return `Warmup — ${ex.warmupType} • ${fmtSecs(ex.duration ?? 180)}`;
 
   if (ex.type === 'intervals') {
     const cardioType = ex.cardioType ?? 'intervals';
     if (cardioType === 'treadmill')
-      return `🏃 Treadmill — ${ex.speedKmh ?? 6}km/h • ${ex.inclinePct ?? 0}% incline • ${fmtSecs(ex.lengthSecs ?? 600)}`;
+      return `Treadmill — ${ex.speedKmh ?? 6}km/h • ${ex.inclinePct ?? 0}% incline • ${fmtSecs(ex.lengthSecs ?? 600)}`;
     if (cardioType === 'stairs')
-      return `🪜 Stairs — ${ex.speedKmh ?? 6}km/h • ${fmtSecs(ex.lengthSecs ?? 600)}`;
-    return `⚡ Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+      return `Stairs — ${ex.speedKmh ?? 6}km/h • ${fmtSecs(ex.lengthSecs ?? 600)}`;
+    return `Intervals — ${ex.reps} reps • ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
   }
 
   if (ex.type === 'combo') {
@@ -279,7 +279,7 @@ export function templateExerciseLabel(ex) {
         .map(s => (s.bodySection === 'Other' ? (s.customBodySection || 'Other') : s.bodySection))
         .filter(Boolean)
     )].join(' / ');
-    return parts ? `🔗 ${parts} — ${ex.sets} sets` : `🔗 Combo — ${ex.sets} sets`;
+    return parts ? `${parts} — ${ex.sets} sets` : `Combo — ${ex.sets} sets`;
   }
 
   const section = ex.bodySection === 'Other'

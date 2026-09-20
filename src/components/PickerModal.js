@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal, FlatList } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize } from '../theme';
+import { Icon } from './Icon';
 
 /**
  * Bottom-sheet "combo box" — tap a field elsewhere to open this, pick one
@@ -17,7 +17,7 @@ export function PickerModal({ visible, title, options, selected, onSelect, onClo
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
           <FlatList
@@ -33,7 +33,7 @@ export function PickerModal({ visible, title, options, selected, onSelect, onClo
                   {item.label}
                 </Text>
                 {item.key === selected && (
-                  <Ionicons name="checkmark" size={20} color={Colors.primary} />
+                  <Icon name="check" size={IconSize.meta} color={Colors.primary} />
                 )}
               </TouchableOpacity>
             )}
@@ -52,7 +52,7 @@ export function PickerField({ label, value, placeholder, onPress }) {
       <Text style={value ? styles.fieldValue : styles.fieldPlaceholder}>
         {value || placeholder}
       </Text>
-      <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+      <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
     </TouchableOpacity>
   );
 }

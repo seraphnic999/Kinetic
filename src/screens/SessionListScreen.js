@@ -5,13 +5,16 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { loadSessions, deleteSession, syncSessions } from '../utils/storage';
 import { useAuth, signOut } from '../hooks/useAuth';
 import { EXERCISE_TYPES } from '../data/exercises';
 
 // Derive unique body areas covered by a session's exercises
+/** The two non-anatomical chips get a type glyph; body sections stay text. */
+const CHIP_ICON = { Warmup: 'warmup', Intervals: 'intervals' };
+
 const getBodyAreas = (exercises) => {
   const areas = new Set();
   exercises?.forEach(ex => {
@@ -22,9 +25,9 @@ const getBodyAreas = (exercises) => {
         if (sub.bodySection) areas.add(sub.bodySection);
       });
     } else if (ex.type === EXERCISE_TYPES.WARMUP) {
-      areas.add('🔥 Warmup');
+      areas.add('Warmup');
     } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
-      areas.add('⚡ Intervals');
+      areas.add('Intervals');
     }
   });
   return Array.from(areas);
@@ -90,9 +93,13 @@ export default function SessionListScreen({ navigation }) {
               {bodyAreas.map((area, idx) => (
                 <View key={idx} style={[
                   styles.chip,
-                  area === '🔥 Warmup'    && styles.chipWarmup,
-                  area === '⚡ Intervals' && styles.chipIntervals,
+                  area === 'Warmup'    && styles.chipWarmup,
+                  area === 'Intervals' && styles.chipIntervals,
                 ]}>
+                  {CHIP_ICON[area] ? (
+                    <Icon name={CHIP_ICON[area]} size={IconSize.pip}
+                          color={area === 'Warmup' ? Colors.warn : Colors.ember} />
+                  ) : null}
                   <Text style={styles.chipText} numberOfLines={1}>{area}</Text>
                 </View>
               ))}
@@ -107,7 +114,7 @@ export default function SessionListScreen({ navigation }) {
             onPress={() => navigation.navigate('SessionEditor', { session: item })}
             activeOpacity={0.7}
           >
-            <Ionicons name="pencil" size={18} color={Colors.textSecondary} />
+            <Icon name="edit" size={IconSize.meta} color={Colors.textSecondary} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -115,7 +122,7 @@ export default function SessionListScreen({ navigation }) {
             onPress={() => setDeleteTarget({ id: item.id, name: item.name })}
             activeOpacity={0.7}
           >
-            <Ionicons name="trash-outline" size={18} color={Colors.danger} />
+            <Icon name="trash" size={IconSize.meta} color={Colors.danger} />
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -123,7 +130,7 @@ export default function SessionListScreen({ navigation }) {
             onPress={() => navigation.navigate('Training', { session: item })}
             activeOpacity={0.8}
           >
-            <Ionicons name="play" size={18} color={Colors.background} />
+            <Icon name="play" size={IconSize.meta} color={Colors.background} />
             <Text style={styles.startBtnText}>Start</Text>
           </TouchableOpacity>
         </View>
@@ -148,11 +155,11 @@ export default function SessionListScreen({ navigation }) {
         >
           <Text style={styles.headerTitle}>Kinetic</Text>
           <View style={styles.accountRow}>
-            <Ionicons name="person-circle-outline" size={15} color={Colors.textSecondary} />
+            <Icon name="user" size={IconSize.meta} color={Colors.textSecondary} />
             <Text style={styles.headerSubtitle} numberOfLines={1}>
               {userEmail || 'Your training sessions'}
             </Text>
-            <Ionicons name="chevron-down" size={12} color={Colors.textMuted} />
+            <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
           </View>
         </TouchableOpacity>
         <View style={{ flexDirection: 'row', gap: Spacing.xs, flexShrink: 0 }}>
@@ -161,14 +168,14 @@ export default function SessionListScreen({ navigation }) {
             onPress={() => navigation.navigate('Dashboard')}
             activeOpacity={0.8}
           >
-            <Ionicons name="bar-chart-outline" size={20} color={Colors.primary} />
+            <Icon name="chartBar" size={IconSize.meta} color={Colors.primary} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
             onPress={() => navigation.navigate('Metrics')}
             activeOpacity={0.8}
           >
-            <Ionicons name="scale-outline" size={20} color={Colors.blue} />
+            <Icon name="scale" size={IconSize.meta} color={Colors.blue} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.addBtn, { backgroundColor: Colors.amber }]}
@@ -183,21 +190,21 @@ export default function SessionListScreen({ navigation }) {
             })}
             activeOpacity={0.8}
           >
-            <Ionicons name="flash-outline" size={20} color={Colors.background} />
+            <Icon name="bolt" size={IconSize.meta} color={Colors.background} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => navigation.navigate('SessionEditor', { session: null })}
             activeOpacity={0.8}
           >
-            <Ionicons name="add" size={26} color={Colors.background} />
+            <Icon name="add" size={IconSize.row} color={Colors.background} />
           </TouchableOpacity>
         </View>
       </View>
 
       {sessions.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyIcon}>🏋️</Text>
+          <Icon name="emptySessions" size={IconSize.empty} color={Colors.textFaint} />
           <Text style={styles.emptyTitle}>No sessions yet</Text>
           <Text style={styles.emptySubtitle}>
             Tap the + button to create your first training session
@@ -365,6 +372,9 @@ const styles = StyleSheet.create({
     gap: Spacing.xs,
   },
   chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     backgroundColor: Colors.surfaceRaised,
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.sm,

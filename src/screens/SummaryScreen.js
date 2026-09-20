@@ -3,21 +3,21 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput,
   ScrollView, StatusBar, useWindowDimensions, Platform, Alert, KeyboardAvoidingView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { Colors, Typography, Spacing, Radius, Shadows } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { formatTime } from '../utils/time';
 import { EXERCISE_TYPES, CARDIO_TYPES } from '../data/exercises';
 import { generateTrainingCsv } from '../utils/generateCsv';
 import { upsertSession, generateId } from '../utils/storage';
 
 const STATUS_ICON = {
-  complete: { name: 'checkmark-circle', color: Colors.gold },
-  partial:  { name: 'ellipsis-horizontal-circle', color: Colors.amber },
-  pending:  { name: 'close-circle-outline', color: Colors.textMuted },
-  skipped:  { name: 'remove-circle-outline', color: Colors.textMuted },
+  complete: { name: 'statusComplete', color: Colors.gold },
+  partial:  { name: 'statusPartial',  color: Colors.warn },
+  pending:  { name: 'statusPending',  color: Colors.textMuted },
+  skipped:  { name: 'statusSkipped',  color: Colors.textMuted },
 };
 
 function ExerciseRow({ ex, index }) {
@@ -28,7 +28,7 @@ function ExerciseRow({ ex, index }) {
         <View style={rowStyles.orderBadge}>
           <Text style={rowStyles.orderNum}>{index + 1}</Text>
         </View>
-        <Ionicons name={icon.name} size={20} color={icon.color} />
+        <Icon name={icon.name} size={IconSize.meta} color={icon.color} />
         <Text style={rowStyles.name} numberOfLines={1}>{ex.name}</Text>
       </View>
 
@@ -210,12 +210,12 @@ export default function SummaryScreen({ navigation, route }) {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <Text style={styles.trophy}>🏆</Text>
+        <Icon name="trophy" size={IconSize.empty} color={Colors.gold} />
         <Text style={styles.title}>Session Complete</Text>
         <Text style={styles.sessionName}>{summary.sessionName}</Text>
         {summary.saved === false && (
           <View style={styles.discardedBadge}>
-            <Ionicons name="eye-off-outline" size={13} color={Colors.textMuted} />
+            <Icon name="eyeOff" size={IconSize.meta} color={Colors.textMuted} />
             <Text style={styles.discardedBadgeTxt}>Not saved to your stats</Text>
           </View>
         )}
@@ -254,7 +254,7 @@ export default function SummaryScreen({ navigation, route }) {
 
         {/* JSON export block (ready for future backend) */}
         <View style={styles.jsonNote}>
-          <Ionicons name="cloud-upload-outline" size={18} color={Colors.textMuted} />
+          <Icon name="cloudSynced" size={IconSize.meta} color={Colors.textMuted} />
           <Text style={styles.jsonNoteText}>Summary ready for sync — backend coming soon</Text>
         </View>
       </ScrollView>
@@ -268,11 +268,7 @@ export default function SummaryScreen({ navigation, route }) {
             activeOpacity={0.8}
             disabled={sessionSaved}
           >
-            <Ionicons
-              name={sessionSaved ? 'checkmark-circle' : 'bookmark-outline'}
-              size={20}
-              color={sessionSaved ? Colors.gold : Colors.blue}
-            />
+            <Icon name={sessionSaved ? 'statusComplete' : 'save'} size={IconSize.meta} color={sessionSaved ? Colors.gold : Colors.blue} />
             <Text style={[styles.saveSessionBtnTxt, sessionSaved && { color: Colors.gold }]}>
               {sessionSaved ? 'Saved as Session' : 'Save as Session'}
             </Text>
@@ -287,7 +283,7 @@ export default function SummaryScreen({ navigation, route }) {
           >
             {downloading
               ? <ActivityIndicator size="small" color={Colors.primary} />
-              : <Ionicons name="download-outline" size={20} color={Colors.primary} />
+              : <Icon name="export" size={IconSize.meta} color={Colors.primary} />
             }
             <Text style={styles.csvBtnTxt}>Download CSV</Text>
           </TouchableOpacity>
@@ -296,7 +292,7 @@ export default function SummaryScreen({ navigation, route }) {
             onPress={() => navigation.popToTop()}
             activeOpacity={0.8}
           >
-            <Ionicons name="home-outline" size={22} color={Colors.background} />
+            <Icon name="tabTrain" size={IconSize.row} color={Colors.background} />
             <Text style={styles.homeBtnTxt}>Back to Home</Text>
           </TouchableOpacity>
         </View>

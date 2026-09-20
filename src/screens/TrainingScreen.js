@@ -5,9 +5,9 @@ import {
   Platform, AppState,
 } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { formatTime } from '../utils/time';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
@@ -163,8 +163,8 @@ const initExerciseStates = (exercises) => {
 
 // ─── Status dot ───────────────────────────────────────────────────────────────
 function StatusDot({ status }) {
-  if (status === 'complete') return <Ionicons name="checkmark-circle" size={24} color={Colors.gold} />;
-  if (status === 'partial')  return <Ionicons name="ellipsis-horizontal-circle" size={24} color={Colors.amber} />;
+  if (status === 'complete') return <Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} />;
+  if (status === 'partial')  return <Icon name="statusPartial" size={IconSize.pip} color={Colors.amber} />;
   return <View style={dotStyles.empty} />;
 }
 const dotStyles = StyleSheet.create({
@@ -208,31 +208,31 @@ function RegularDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBac
 
       {done ? (
         <View style={d.doneBadge}>
-          <Ionicons name="checkmark-circle" size={30} color={Colors.gold} />
+          <Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} />
           <Text style={d.doneText}>Complete!</Text>
         </View>
       ) : !started ? (
         /* Waiting to start — show START SET */
         <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
-          <Ionicons name="play" size={26} color={Colors.background} />
+          <Icon name="play" size={IconSize.row} color={Colors.background} />
           <Text style={d.actionTxt}>START SET</Text>
         </TouchableOpacity>
       ) : (
         /* Set in progress — show elapsed + SET DONE */
         <>
           <View style={d.elapsedRow}>
-            <Ionicons name="timer-outline" size={18} color={Colors.amber} />
+            <Icon name="timer" size={IconSize.meta} color={Colors.amber} />
             <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
           </View>
           <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
-            <Ionicons name="checkmark" size={26} color={Colors.background} />
+            <Icon name="check" size={IconSize.row} color={Colors.background} />
             <Text style={d.actionTxt}>SET DONE</Text>
           </TouchableOpacity>
         </>
       )}
 
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
       </TouchableOpacity>
     </View>
@@ -256,7 +256,10 @@ function ComboDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack 
   const setElapsed = started ? Math.max(0, Math.floor((now - state.setStartedAt) / 1000)) : 0;
   return (
     <View style={d.container}>
-      <Text style={d.name}>🔗 {exercise.name || 'Combo'}</Text>
+      <View style={d.titleRow}>
+        <Icon name="combo" size={IconSize.section} color={Colors.ice} />
+        <Text style={d.name}>{exercise.name || 'Combo'}</Text>
+      </View>
 
       <View style={d.stepperRow}>
         <Stepper
@@ -291,26 +294,26 @@ function ComboDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack 
       </View>
 
       {done ? (
-        <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
+        <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
       ) : !started ? (
         <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
-          <Ionicons name="play" size={26} color={Colors.background} />
+          <Icon name="play" size={IconSize.row} color={Colors.background} />
           <Text style={d.actionTxt}>START SET</Text>
         </TouchableOpacity>
       ) : (
         <>
           <View style={d.elapsedRow}>
-            <Ionicons name="timer-outline" size={18} color={Colors.amber} />
+            <Icon name="timer" size={IconSize.meta} color={Colors.amber} />
             <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
           </View>
           <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
-            <Ionicons name="git-merge-outline" size={22} color={Colors.background} />
+            <Icon name="combo" size={IconSize.row} color={Colors.background} />
             <Text style={d.actionTxt}>COMBO SET DONE</Text>
           </TouchableOpacity>
         </>
       )}
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
       </TouchableOpacity>
     </View>
@@ -322,7 +325,10 @@ function WarmupDetail({ exercise, state, onToggle, onBack }) {
   const done = state.status === 'complete';
   return (
     <View style={d.container}>
-      <Text style={d.name}>🔥 Warmup</Text>
+      <View style={d.titleRow}>
+        <Icon name="warmup" size={IconSize.section} color={Colors.warn} />
+        <Text style={d.name}>Warmup</Text>
+      </View>
       <Text style={d.subtitle}>{exercise.warmupType}</Text>
 
       <View style={wu.block}>
@@ -333,14 +339,14 @@ function WarmupDetail({ exercise, state, onToggle, onBack }) {
       {!done &&
         <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
           onPress={onToggle} activeOpacity={0.8}>
-          <Ionicons name={state.isRunning ? 'pause' : 'play'} size={26} color={Colors.background} />
+          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
           <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : 'START'}</Text>
         </TouchableOpacity>
       }
-      {done && <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold}/><Text style={d.doneText}>Warmup Complete!</Text></View>}
+      {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Warmup Complete!</Text></View>}
 
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
       </TouchableOpacity>
     </View>
@@ -387,7 +393,10 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
 
   return (
     <View style={d.container}>
-      <Text style={d.name}>⚡ Intervals</Text>
+      <View style={d.titleRow}>
+        <Icon name="intervals" size={IconSize.section} color={Colors.ember} />
+        <Text style={d.name}>Intervals</Text>
+      </View>
 
       <View style={iv.repsRow}>
         <Text style={iv.repsLabel}>REPS REMAINING</Text>
@@ -429,14 +438,14 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
       {!done &&
         <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
           onPress={onToggle} activeOpacity={0.8}>
-          <Ionicons name={state.isRunning ? 'pause' : 'play'} size={26} color={Colors.background} />
+          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
           <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : notStart ? 'START' : 'RESUME'}</Text>
         </TouchableOpacity>
       }
-      {done && <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold}/><Text style={d.doneText}>Intervals Complete!</Text></View>}
+      {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Intervals Complete!</Text></View>}
 
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
       </TouchableOpacity>
     </View>
@@ -466,7 +475,7 @@ const iv = StyleSheet.create({
 function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, onBack }) {
   const isTreadmill = state.cardioType === CARDIO_TYPES.TREADMILL;
   const label = isTreadmill ? 'Treadmill' : 'Stairs';
-  const icon  = isTreadmill ? '🏃' : '🪜';
+  const icon  = isTreadmill ? 'treadmill' : 'stairs';
   const done     = state.status === 'complete';
   const notStart = state.status === 'pending';
   const total    = state.totalSecs ?? 600;
@@ -476,7 +485,10 @@ function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, o
 
   return (
     <View style={d.container}>
-      <Text style={d.name}>{icon} {label}</Text>
+      <View style={d.titleRow}>
+        <Icon name={icon} size={IconSize.section} color={Colors.ember} />
+        <Text style={d.name}>{label}</Text>
+      </View>
 
       <View style={[iv.phaseBox, { borderColor: Colors.primary }]}>
         <Text style={[iv.phaseLabel, { color: Colors.primary }]}>
@@ -500,14 +512,14 @@ function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, o
       {!done &&
         <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
           onPress={onToggle} activeOpacity={0.8}>
-          <Ionicons name={state.isRunning ? 'pause' : 'play'} size={26} color={Colors.background} />
+          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
           <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : notStart ? 'START' : 'RESUME'}</Text>
         </TouchableOpacity>
       }
-      {done && <View style={d.doneBadge}><Ionicons name="checkmark-circle" size={30} color={Colors.gold}/><Text style={d.doneText}>{label} Complete!</Text></View>}
+      {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>{label} Complete!</Text></View>}
 
       <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Ionicons name="chevron-back" size={20} color={Colors.textSecondary} />
+        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
         <Text style={d.backTxt}>Back to exercises</Text>
       </TouchableOpacity>
     </View>
@@ -518,6 +530,7 @@ function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, o
 const d = StyleSheet.create({
   container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
   name:      { ...Typography.h1, color: Colors.textPrimary },
+  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   subtitle:  { ...Typography.body, color: Colors.textSecondary, marginTop: -Spacing.sm },
   heroStepperRow:{ flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg },
   stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md, justifyContent: 'center' },
@@ -654,10 +667,10 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   const hasExercises = exercises.length > 0;
 
   const typeOptions = [
-    !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'flame-outline', label: 'Warmup', color: Colors.amber },
-    { key: EXERCISE_TYPES.REGULAR, icon: 'barbell-outline', label: 'Exercise', color: Colors.primary },
-    { key: EXERCISE_TYPES.COMBO,   icon: 'git-merge-outline', label: 'Combo', color: Colors.blue },
-    !hasCardio && { key: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',  label: 'Cardio', color: Colors.gold },
+    !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'warmup', label: 'Warmup', color: Colors.amber },
+    { key: EXERCISE_TYPES.REGULAR, icon: 'barbell', label: 'Exercise', color: Colors.primary },
+    { key: EXERCISE_TYPES.COMBO,   icon: 'combo', label: 'Combo', color: Colors.blue },
+    !hasCardio && { key: EXERCISE_TYPES.INTERVALS, icon: 'intervals',  label: 'Cardio', color: Colors.gold },
   ].filter(Boolean);
 
   const selectType = (t) => { setType(t); setStep('form'); };
@@ -690,7 +703,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
         {/* Header */}
         <View style={qam.header}>
           <TouchableOpacity onPress={step === 'form' ? () => setStep('type') : onClose} style={qam.backBtn}>
-            <Ionicons name={step === 'form' ? 'chevron-back' : 'close'} size={24} color={Colors.textPrimary} />
+            <Icon name={step === 'form' ? 'back' : 'close'} size={IconSize.row} color={Colors.textPrimary} />
           </TouchableOpacity>
           <Text style={qam.title}>{step === 'type' ? 'Add Exercise' : type}</Text>
           <View style={{ width: 40 }} />
@@ -701,7 +714,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
           {step === 'type' && typeOptions.map(opt => (
             <TouchableOpacity key={opt.key} style={[qam.typeCard, { borderColor: opt.color + '55' }]}
               onPress={() => selectType(opt.key)} activeOpacity={0.8}>
-              <Ionicons name={opt.icon} size={28} color={opt.color} />
+              <Icon name={opt.icon} size={IconSize.tab} color={opt.color} />
               <Text style={[qam.typeLabel, { color: opt.color }]}>{opt.label}</Text>
             </TouchableOpacity>
           ))}
@@ -748,7 +761,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
                     <Text style={qam.subCardTitle}>Exercise {idx + 1}</Text>
                     {comboSubs.length > 2 && (
                       <TouchableOpacity onPress={() => removeComboSub(idx)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Ionicons name="close-circle" size={20} color={Colors.danger} />
+                        <Icon name="close" size={IconSize.meta} color={Colors.danger} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -760,7 +773,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
                 </View>
               ))}
               <TouchableOpacity style={qam.addSubBtn} onPress={addComboSub} activeOpacity={0.8}>
-                <Ionicons name="add" size={18} color={Colors.primary} />
+                <Icon name="add" size={IconSize.meta} color={Colors.primary} />
                 <Text style={qam.addSubBtnTxt}>Add Exercise to Combo</Text>
               </TouchableOpacity>
             </>
@@ -810,7 +823,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
               activeOpacity={0.8}
               disabled={!isFormValid}
             >
-              <Ionicons name="checkmark" size={22} color={Colors.background} />
+              <Icon name="check" size={IconSize.row} color={Colors.background} />
               <Text style={qam.confirmTxt}>Add to Session</Text>
             </TouchableOpacity>
           )}
@@ -1388,7 +1401,7 @@ export default function TrainingScreen({ navigation, route }) {
                     ) : null}
                     <Text style={styles.exMeta}>{getExerciseMeta(item, st)}</Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                  <Icon name="forward" size={IconSize.meta} color={Colors.textMuted} />
                 </TouchableOpacity>
               );
             }}
@@ -1400,7 +1413,7 @@ export default function TrainingScreen({ navigation, route }) {
               onPress={() => setShowQuickAdd(true)}
               activeOpacity={0.85}
             >
-              <Ionicons name="add" size={28} color={Colors.background} />
+              <Icon name="add" size={IconSize.tab} color={Colors.background} />
               <Text style={styles.quickAddTxt}>Add Exercise</Text>
             </TouchableOpacity>
           )}

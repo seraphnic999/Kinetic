@@ -7,16 +7,15 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
-import {
-  BarlowSemiCondensed_500Medium,
-  BarlowSemiCondensed_600SemiBold,
-  BarlowSemiCondensed_700Bold,
-} from '@expo-google-fonts/barlow-semi-condensed';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-} from '@expo-google-fonts/inter';
+// Per-weight subpaths, not the package barrel. The barrel's index re-exports
+// every weight and italic, so importing from it bundles all 18 faces of each
+// family — 37 ttf assets for the six we actually use.
+import { BarlowSemiCondensed_500Medium }   from '@expo-google-fonts/barlow-semi-condensed/500Medium';
+import { BarlowSemiCondensed_600SemiBold } from '@expo-google-fonts/barlow-semi-condensed/600SemiBold';
+import { BarlowSemiCondensed_700Bold }     from '@expo-google-fonts/barlow-semi-condensed/700Bold';
+import { Inter_400Regular }  from '@expo-google-fonts/inter/400Regular';
+import { Inter_500Medium }   from '@expo-google-fonts/inter/500Medium';
+import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 
 import { Colors } from './src/theme';
 import { useAuth } from './src/hooks/useAuth';

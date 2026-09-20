@@ -4,9 +4,9 @@ import {
   ScrollView, StatusBar, Modal,
   FlatList, Platform, useWindowDimensions,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { upsertSession, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES, CARDIO_TYPES, CARDIO_TYPE_LABELS } from '../data/exercises';
 import { formatTime } from '../utils/time';
@@ -43,7 +43,7 @@ function Stepper({ value, onChange, min = 0, max = 999, label }) {
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="remove" size={18} color={Colors.textPrimary} />
+          <Icon name="minus" size={IconSize.meta} color={Colors.textPrimary} />
         </TouchableOpacity>
         <TextInput
           style={stepperStyles.input}
@@ -59,7 +59,7 @@ function Stepper({ value, onChange, min = 0, max = 999, label }) {
           activeOpacity={0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Ionicons name="add" size={18} color={Colors.textPrimary} />
+          <Icon name="add" size={IconSize.meta} color={Colors.textPrimary} />
         </TouchableOpacity>
       </View>
     </View>
@@ -93,7 +93,7 @@ function PickerModal({ visible, title, options, onSelect, onClose }) {
           <View style={pickerStyles.header}>
             <Text style={pickerStyles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={Colors.textSecondary} />
+              <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
             </TouchableOpacity>
           </View>
           <FlatList
@@ -158,7 +158,7 @@ function RegularExerciseForm({ exercise, onChange }) {
           <Text style={exercise.bodySection ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
             {exercise.bodySection || 'Select body section...'}
           </Text>
-          <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
 
@@ -174,7 +174,7 @@ function RegularExerciseForm({ exercise, onChange }) {
             <Text style={exercise.name ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
               {exercise.name || 'Select exercise...'}
             </Text>
-            <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+            <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
           </TouchableOpacity>
           {exercise.name === 'Other' && (
             <TextInput
@@ -247,7 +247,7 @@ function WarmupForm({ exercise, onChange }) {
           <Text style={exercise.warmupType ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
             {exercise.warmupType || 'Select type...'}
           </Text>
-          <Ionicons name="chevron-down" size={18} color={Colors.textSecondary} />
+          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
         </TouchableOpacity>
       </View>
       <View style={formStyles.timerRow}>
@@ -496,7 +496,7 @@ export default function SessionEditorScreen({ navigation, route }) {
       {/* Nav Header */}
       <View style={[styles.navHeader, { paddingTop: insets.top }]} onLayout={e => setNavH(e.nativeEvent.layout.height)}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={Colors.textPrimary} />
+          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>
           {existingSession ? 'Edit Session' : 'New Session'}
@@ -578,13 +578,13 @@ export default function SessionEditorScreen({ navigation, route }) {
                           style={[styles.moveBtn, !canUp && styles.moveBtnDisabled]}
                           onPress={() => canUp && moveExercise(ex.id, -1)}
                         >
-                          <Ionicons name="chevron-up" size={16} color={canUp ? Colors.textSecondary : Colors.textMuted} />
+                          <Icon name="chevronUp" size={IconSize.meta} color={canUp ? Colors.textSecondary : Colors.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.moveBtn, !canDown && styles.moveBtnDisabled]}
                           onPress={() => canDown && moveExercise(ex.id, 1)}
                         >
-                          <Ionicons name="chevron-down" size={16} color={canDown ? Colors.textSecondary : Colors.textMuted} />
+                          <Icon name="chevronDown" size={IconSize.meta} color={canDown ? Colors.textSecondary : Colors.textMuted} />
                         </TouchableOpacity>
                       </>
                     )}
@@ -592,12 +592,9 @@ export default function SessionEditorScreen({ navigation, route }) {
                       style={styles.deleteExBtn}
                       onPress={() => deleteExercise(ex.id)}
                     >
-                      <Ionicons name="trash-outline" size={16} color={Colors.danger} />
+                      <Icon name="trash" size={IconSize.meta} color={Colors.danger} />
                     </TouchableOpacity>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={16} color={Colors.textSecondary}
-                    />
+                    <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textSecondary} />
                   </View>
                 </TouchableOpacity>
 
@@ -634,7 +631,7 @@ export default function SessionEditorScreen({ navigation, route }) {
                                     subExercises: ex.subExercises.filter((_, i) => i !== subIdx),
                                   })}
                                 >
-                                  <Ionicons name="close-circle" size={18} color={Colors.danger} />
+                                  <Icon name="close" size={IconSize.meta} color={Colors.danger} />
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -654,7 +651,7 @@ export default function SessionEditorScreen({ navigation, route }) {
                             subExercises: [...ex.subExercises, newRegular()],
                           })}
                         >
-                          <Ionicons name="add" size={16} color={Colors.primary} />
+                          <Icon name="add" size={IconSize.meta} color={Colors.primary} />
                           <Text style={styles.addSubBtnText}>Add Exercise to Combo</Text>
                         </TouchableOpacity>
                       </View>
@@ -671,7 +668,7 @@ export default function SessionEditorScreen({ navigation, route }) {
             onPress={() => setShowAddMenu(true)}
             activeOpacity={0.8}
           >
-            <Ionicons name="add-circle" size={22} color={Colors.primary} />
+            <Icon name="add" size={IconSize.row} color={Colors.primary} />
             <Text style={styles.addExerciseBtnText}>Add Exercise</Text>
           </TouchableOpacity>
         </View>
@@ -689,14 +686,14 @@ export default function SessionEditorScreen({ navigation, route }) {
             <View style={menuStyles.header}>
               <Text style={menuStyles.title}>Add Exercise</Text>
               <TouchableOpacity onPress={() => setShowAddMenu(false)}>
-                <Ionicons name="close" size={24} color={Colors.textSecondary} />
+                <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
               </TouchableOpacity>
             </View>
             {[
-              { type: EXERCISE_TYPES.REGULAR,   icon: 'barbell-outline',   label: 'Regular Exercise',  desc: 'Single exercise with weight, sets & reps' },
-              { type: EXERCISE_TYPES.COMBO,     icon: 'git-merge-outline', label: 'Combo Exercise',    desc: 'Two or more exercises, shared set count' },
-              { type: EXERCISE_TYPES.WARMUP,    icon: 'flame-outline',     label: 'Warmup',            desc: 'Treadmill or steps — always runs first' },
-              { type: EXERCISE_TYPES.INTERVALS, icon: 'pulse-outline',     label: 'Cardio',            desc: 'Intervals, treadmill, or stairs — always runs last' },
+              { type: EXERCISE_TYPES.REGULAR,   icon: 'barbell',   label: 'Regular Exercise',  desc: 'Single exercise with weight, sets & reps' },
+              { type: EXERCISE_TYPES.COMBO,     icon: 'combo', label: 'Combo Exercise',    desc: 'Two or more exercises, shared set count' },
+              { type: EXERCISE_TYPES.WARMUP,    icon: 'warmup',     label: 'Warmup',            desc: 'Treadmill or steps — always runs first' },
+              { type: EXERCISE_TYPES.INTERVALS, icon: 'intervals',     label: 'Cardio',            desc: 'Intervals, treadmill, or stairs — always runs last' },
             ].filter(opt => {
               if (opt.type === EXERCISE_TYPES.WARMUP)    return !exercises.some(e => e.type === EXERCISE_TYPES.WARMUP);
               if (opt.type === EXERCISE_TYPES.INTERVALS) return !exercises.some(e => e.type === EXERCISE_TYPES.INTERVALS);
@@ -709,13 +706,13 @@ export default function SessionEditorScreen({ navigation, route }) {
                 activeOpacity={0.7}
               >
                 <View style={menuStyles.optionIcon}>
-                  <Ionicons name={opt.icon} size={22} color={Colors.primary} />
+                  <Icon name={opt.icon} size={IconSize.row} color={Colors.primary} />
                 </View>
                 <View style={menuStyles.optionText}>
                   <Text style={menuStyles.optionLabel}>{opt.label}</Text>
                   <Text style={menuStyles.optionDesc}>{opt.desc}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={Colors.textMuted} />
+                <Icon name="forward" size={IconSize.meta} color={Colors.textMuted} />
               </TouchableOpacity>
             ))}
           </View>

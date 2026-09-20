@@ -4,8 +4,8 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, Radius, DIGITAL_FONT } from '../theme';
+import { Colors, Typography, Spacing, Radius, DIGITAL_FONT, IconSize } from '../theme';
+import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
 
 export default function LoginScreen() {
@@ -46,7 +46,7 @@ export default function LoginScreen() {
       >
         {/* Logo / wordmark */}
         <View style={s.logoRow}>
-          <Ionicons name="flash" size={36} color={Colors.primary} />
+          <Icon name="bolt" size={IconSize.section} color={Colors.primary} />
           <Text style={s.logo}>KINETIC</Text>
         </View>
         <Text style={s.tagline}>Your training companion</Text>
