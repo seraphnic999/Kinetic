@@ -1042,20 +1042,27 @@ Three adjustments:
 Seven stages, each independently shippable. The tokens land first and the old
 names stay aliased until the last stage, so no screen is migrated twice.
 
-| # | Stage | Contains |
-|---|---|---|
-| **1** | **Foundations** | `theme.js` v2 with aliases · bundle DSEG7 · add Barlow + Inter · add `react-native-svg` · `src/utils/units.js` (the lb shadow, §3.5) · `Dev/Icons` route · icon pipeline (`assets/icons-src` + `generate-icons.mjs` copied from Mommy) |
-| **2** | **Icon set** | Generate 100 glyphs · review at 22/26/30 on three grounds · fix pass · delete every emoji from the codebase |
-| **3** | **Navigation** | Four-tab bar · `You` tab (account, defaults, export) · Training/Summary/Editor become full-screen pushes · retire the header circle cluster |
-| **4** | **Analytics engine** | `shared/analytics.js` · `parent_id` migration + combo children in `syncWorkout` · timeline-derived `workSecs`/`restSecs`/`density` · e1RM · mirror-file check |
-| **5** | **Stats + Body** | Four tiles · PR feed · e1RM progression · volume trend with rolling average · body split · lift:cardio · body strip · Exercise Detail screen · grouped history · **historic combo backfill from `timeline`** · `weight_lb` column in the CSV export |
-| **6** | **Training** | Rest hero · set pips · detail sheet · plate-math weight entry **with the lb shadow** · fixed `SET DONE` bar · Summary rebuild |
-| **7** | **Sweep** | Train tab · Editor restyle · shared primitives · empty/loading states · splash + notification icon · **delete the legacy token aliases** · release build |
+| # | Stage | Status | Contains |
+|---|---|---|---|
+| **1** | **Foundations** | ✅ | `theme.js` v2 with aliases · bundle DSEG7 · Barlow + Inter · `react-native-svg` · `src/utils/units.js` · `Dev/Icons` route · icon pipeline |
+| **2** | **Icon set** | ✅ | 100 glyphs in 13 batches · wired into all 77 call sites · every emoji gone from the UI · `@expo/vector-icons` dropped (bundle 12 MB → 5.1 MB) |
+| **3** | **Navigation** | ✅ | Four-tab bar with solid active variants · You tab (account, defaults, whole-history export) · Training/Summary/Editor pushed over the bar · header circle cluster retired |
+| **4** | **Analytics engine** | ✅ | `shared/analytics.js` + sync check · `parent_id` migration, combo children as real rows · timeline-derived work/rest/density · e1RM · cardio distance |
+| **5** | **Stats + Body** | ✅ | Four comparison tiles · records feed · e1RM progression · volume with rolling average · body split · lift-vs-cardio · body strip · Exercise Detail · grouped history · `Chart.js` on svg |
+| **6** | **Training** | ⬜ | Rest hero · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed `SET DONE` bar · Summary rebuild |
+| **7** | **Sweep** | ⬜ | Train tab · editor restyle · shared primitives · empty/loading states · splash + notification icon · delete the legacy token aliases · release build |
 
-Stages 4 and 5 are the ones you asked for and they do not depend on stages 2–3
-— if statistics matter more than looks right now, 1 → 4 → 5 is a valid path and
-leaves the app looking exactly as it does today while every number in it becomes
-correct.
+**Shipped as v12 / versionCode 12 (1.4.0).** Stages 1–5 are in; 6 and 7 remain.
+
+Known gaps at v12, both scheduled for stage 6:
+
+- **The training screen is untouched.** It still has the small header rest
+  timer, the status dot instead of set pips, the full-screen detail swap, and
+  the one-tap-per-kilo stepper. That is the single biggest usability change in
+  the whole redesign and it has not happened yet.
+- **The lb shadow (§3.5) is only on the Body tab, the export and Exercise
+  Detail.** It belongs on the set-detail weight box most of all, which is
+  stage 6 work.
 
 ---
 
