@@ -267,12 +267,8 @@ export default function MetricsScreen({ navigation }) {
       style={{ flex: 1, backgroundColor: Colors.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[s.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={s.title}>Body Metrics</Text>
-        <View style={{ width: 40 }} />
+      <View style={[s.header, { paddingTop: insets.top + Spacing.sm }]}>
+        <Text style={s.title}>Body</Text>
       </View>
 
       <ScrollView
@@ -390,8 +386,7 @@ export default function MetricsScreen({ navigation }) {
 
 const s = StyleSheet.create({
   header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  backBtn:      { width: 40 },
-  title:        { ...Typography.h2, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
+  title:        { ...Typography.h1, color: Colors.text },
   content:      { padding: Spacing.md, gap: Spacing.lg },
   section:      { gap: Spacing.sm },
   sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },

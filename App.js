@@ -3,6 +3,7 @@ import React, { useCallback } from 'react';
 import { Platform, View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -27,6 +28,8 @@ import SummaryScreen       from './src/screens/SummaryScreen';
 import DashboardScreen     from './src/screens/DashboardScreen';
 import MetricsScreen       from './src/screens/MetricsScreen';
 import DevIconsScreen      from './src/screens/DevIconsScreen';
+import YouScreen           from './src/screens/YouScreen';
+import { TabBar } from './src/components/TabBar';
 
 // ── Error boundary ────────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
@@ -82,37 +85,57 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 const Stack = createStackNavigator();
+const Tab = createBottomTabNavigator();
+
+// The four tabs. Everything reachable from here keeps the bar visible; the
+// screens that are MODES — training, the summary you land on after it, the
+// editor — are pushed over the top by the stack below, without it.
+function Tabs() {
+  return (
+    <Tab.Navigator
+      tabBar={props => <TabBar {...props} />}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: { backgroundColor: Colors.base },
+      }}
+    >
+      <Tab.Screen name="Train" component={SessionListScreen} />
+      <Tab.Screen name="Stats" component={DashboardScreen} />
+      <Tab.Screen name="Body"  component={MetricsScreen} />
+      <Tab.Screen name="You"   component={YouScreen} />
+    </Tab.Navigator>
+  );
+}
 
 function AppNavigator() {
   const { session, loading } = useAuth();
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator color={Colors.primary} size="large" />
+      <View style={{ flex: 1, backgroundColor: Colors.base, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={Colors.ember} size="large" />
       </View>
     );
   }
 
-  if (!session) {
-    return <LoginScreen />;
-  }
+  if (!session) return <LoginScreen />;
 
   return (
     <Stack.Navigator
-      initialRouteName="SessionList"
+      initialRouteName="Tabs"
       screenOptions={{
         headerShown: false,
-        cardStyle: { backgroundColor: Colors.background, flex: 1 },
+        cardStyle: { backgroundColor: Colors.base, flex: 1 },
         animation: 'slide_from_right',
       }}
     >
-      <Stack.Screen name="SessionList"   component={SessionListScreen} />
-      <Stack.Screen name="SessionEditor" component={SessionEditorScreen} />
+      <Stack.Screen name="Tabs" component={Tabs} />
+      {/* Modes — pushed over the tab bar, not inside it. Training keeps the
+          screen awake and owns the back button; wandering into the dashboard
+          mid-set should not be one tap away. */}
       <Stack.Screen name="Training"      component={TrainingScreen} />
       <Stack.Screen name="Summary"       component={SummaryScreen} />
-      <Stack.Screen name="Dashboard"     component={DashboardScreen} />
-      <Stack.Screen name="Metrics"       component={MetricsScreen} />
+      <Stack.Screen name="SessionEditor" component={SessionEditorScreen} />
       {/* Linked from nowhere — long-press the "Kinetic" wordmark to reach it. */}
       <Stack.Screen name="DevIcons"      component={DevIconsScreen} />
     </Stack.Navigator>

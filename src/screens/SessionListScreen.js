@@ -1,14 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, StatusBar, useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize, Touch, onAccent } from '../theme';
 import { Icon } from '../components/Icon';
 import { loadSessions, deleteSession, syncSessions } from '../utils/storage';
-import { useAuth, signOut } from '../hooks/useAuth';
+import { peekPrefs } from '../utils/prefs';
 import { EXERCISE_TYPES } from '../data/exercises';
 
 // Derive unique body areas covered by a session's exercises
@@ -38,11 +38,7 @@ export default function SessionListScreen({ navigation }) {
   const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
   const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
-  const [showAccount, setShowAccount] = useState(false);
-  const [signingOut, setSigningOut]   = useState(false);
   const [refreshing, setRefreshing]   = useState(false);
-  const { session: auth } = useAuth();
-  const userEmail = auth?.user?.email ?? '';
 
   // Render the cache first so the list is up instantly and works with no
   // connectivity, then reconcile with Supabase in the background.
@@ -66,13 +62,6 @@ export default function SessionListScreen({ navigation }) {
     await deleteSession(deleteTarget.id);
     setSessions(await loadSessions());
     setDeleteTarget(null);
-  };
-
-  const handleSignOut = async () => {
-    setSigningOut(true);
-    await signOut();
-    setSigningOut(false);
-    setShowAccount(false);
   };
 
   const renderSession = ({ item }) => {
@@ -142,62 +131,53 @@ export default function SessionListScreen({ navigation }) {
     <View style={[styles.container, { height: windowHeight }]}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
-      {/* Header */}
+      {/* Header. The four-circle cluster that used to live here is gone: the
+          dashboard and metrics are tabs now, and the account moved to You —
+          it was previously reached by tapping your own email address, because
+          the row had no space left for a fifth circle. */}
       <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
         {/* Long-press the wordmark for the hidden icon proof sheet (Dev → Icons).
             Linked from nowhere else; see src/screens/DevIconsScreen.js. */}
         <TouchableOpacity
           style={styles.accountBtn}
-          onPress={() => setShowAccount(true)}
           onLongPress={() => navigation.navigate('DevIcons')}
           delayLongPress={800}
-          activeOpacity={0.7}
+          activeOpacity={1}
         >
           <Text style={styles.headerTitle}>Kinetic</Text>
-          <View style={styles.accountRow}>
-            <Icon name="user" size={IconSize.meta} color={Colors.textSecondary} />
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {userEmail || 'Your training sessions'}
-            </Text>
-            <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
-          </View>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {sessions.length
+              ? `${sessions.length} session${sessions.length === 1 ? '' : 's'}`
+              : 'Your training sessions'}
+          </Text>
         </TouchableOpacity>
-        <View style={{ flexDirection: 'row', gap: Spacing.xs, flexShrink: 0 }}>
+
+        <View style={{ flexDirection: 'row', gap: Spacing.sm, flexShrink: 0 }}>
           <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
-            onPress={() => navigation.navigate('Dashboard')}
-            activeOpacity={0.8}
-          >
-            <Icon name="chartBar" size={IconSize.meta} color={Colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: Colors.surfaceRaised }]}
-            onPress={() => navigation.navigate('Metrics')}
-            activeOpacity={0.8}
-          >
-            <Icon name="scale" size={IconSize.meta} color={Colors.blue} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: Colors.amber }]}
+            style={[styles.addBtn, styles.quickBtn]}
             onPress={() => navigation.navigate('Training', {
               adHoc: true,
               session: {
                 id: null,
                 name: `Quick Training — ${new Date().toLocaleDateString('en',{month:'short',day:'numeric'})}`,
                 exercises: [],
-                restTimerSecs: 60,
+                restTimerSecs: peekPrefs().restTimerSecs,
               },
             })}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Start a quick session"
           >
-            <Icon name="bolt" size={IconSize.meta} color={Colors.background} />
+            <Icon name="bolt" size={IconSize.row} color={Colors.gold} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.addBtn}
             onPress={() => navigation.navigate('SessionEditor', { session: null })}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="New session"
           >
-            <Icon name="add" size={IconSize.row} color={Colors.background} />
+            <Icon name="add" size={IconSize.row} color={onAccent} />
           </TouchableOpacity>
         </View>
       </View>
@@ -229,40 +209,6 @@ export default function SessionListScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
           }
         />
-      )}
-
-      {/* Account / sign out */}
-      {showAccount && (
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmBox}>
-            <Text style={styles.confirmTitle}>Account</Text>
-            <Text style={styles.confirmMsg}>Signed in as</Text>
-            <Text style={styles.accountEmail}>{userEmail || 'unknown'}</Text>
-            <Text style={styles.accountNote}>
-              Your sessions are saved to your account — they come back when you sign in again.
-            </Text>
-            <View style={styles.confirmBtns}>
-              <TouchableOpacity
-                style={styles.confirmCancelBtn}
-                onPress={() => setShowAccount(false)}
-                disabled={signingOut}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmCancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmDeleteBtn}
-                onPress={handleSignOut}
-                disabled={signingOut}
-                activeOpacity={0.8}
-              >
-                {signingOut
-                  ? <ActivityIndicator color={Colors.textPrimary} />
-                  : <Text style={styles.confirmDeleteTxt}>Sign out</Text>}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
       )}
 
       {/* Delete confirmation */}
@@ -319,15 +265,10 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: Spacing.sm,
   },
-  accountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
+  quickBtn: { backgroundColor: Colors.raised, borderWidth: 1, borderColor: Colors.line },
   addBtn: {
-    width: 48,
-    height: 48,
+    width: Touch.min,
+    height: Touch.min,
     borderRadius: Radius.full,
     backgroundColor: Colors.primary,
     alignItems: 'center',
@@ -465,8 +406,6 @@ const styles = StyleSheet.create({
   },
   confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
   confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
-  accountEmail: { ...Typography.body, color: Colors.textPrimary, textAlign: 'center', marginTop: -Spacing.xs },
-  accountNote:  { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center' },
   confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
   confirmCancelBtn: {
     flex: 1, height: 44, borderRadius: Radius.md,

@@ -29,9 +29,14 @@ import { Icon } from './Icon';
  * Keeping a single source of truth here avoids that whole class of bug.
  */
 export function Stepper({
-  value, onChange, min = 0, max = 999, label,
+  value, onChange, min = 0, max = 999, step = 1, label,
   size = 'normal', readOnly = false, fillRow = true, containerStyle,
 }) {
+  // `step` snaps to the grid it implies, so a 60s rest timer stepping by 15
+  // gives 60/75/90 rather than 60/61/62 — and a value already off the grid
+  // (an old 50s preference) lands back on it rather than staying off by 5.
+  const down = () => onChange(Math.max(min, Math.ceil(value / step) * step - step));
+  const up   = () => onChange(Math.min(max, Math.floor(value / step) * step + step));
   const L = size === 'large';
   // Standalone width = 2 buttons + a comfortable input width, with margin
   // to spare above the hard minimum so nothing ever clips.
@@ -46,7 +51,7 @@ export function Stepper({
       <View style={[styles.row, L && styles.rowLarge]}>
         <TouchableOpacity
           style={[styles.btn, L && styles.btnLarge]}
-          onPress={() => !readOnly && onChange(Math.max(min, value - 1))}
+          onPress={() => !readOnly && down()}
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
@@ -68,7 +73,7 @@ export function Stepper({
 
         <TouchableOpacity
           style={[styles.btn, L && styles.btnLarge]}
-          onPress={() => !readOnly && onChange(Math.min(max, value + 1))}
+          onPress={() => !readOnly && up()}
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >

@@ -8,7 +8,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
 import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
-import { signOut as signOutAccount } from '../hooks/useAuth';
 import { PickerModal, PickerField } from '../components/PickerModal';
 import {
   fmtDate, fmtDur, fmtVolume,
@@ -336,13 +335,11 @@ export default function DashboardScreen({ navigation }) {
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expanded, setExpanded]     = useState(null);
-  const [userEmail, setUserEmail]   = useState('');
 
   const load = useCallback(async () => {
     try {
       const { data: { session: auth } } = await supabase.auth.getSession();
       if (!auth) return;
-      setUserEmail(auth.user.email ?? '');
 
       const [{ data: raw }, { data: metricRows }] = await Promise.all([
         supabase
@@ -383,7 +380,6 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
-  const signOut   = () => signOutAccount();
 
   if (loading) return (
     <View style={{ flex:1, backgroundColor:Colors.background, alignItems:'center', justifyContent:'center' }}>
@@ -398,13 +394,7 @@ export default function DashboardScreen({ navigation }) {
     <View style={{ flex:1, backgroundColor:Colors.background }}>
       {/* Header */}
       <View style={[ds.header, { paddingTop: insets.top + Spacing.sm }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={ds.backBtn}>
-          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={ds.title}>Dashboard</Text>
-        <TouchableOpacity onPress={signOut} style={ds.signOutBtn}>
-          <Icon name="signOut" size={IconSize.row} color={Colors.textSecondary} />
-        </TouchableOpacity>
+        <Text style={ds.title}>Stats</Text>
       </View>
 
       <ScrollView
@@ -412,7 +402,6 @@ export default function DashboardScreen({ navigation }) {
         contentContainerStyle={[ds.content, { paddingBottom: insets.bottom + Spacing.xl }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
       >
-        <Text style={ds.userEmail}>{userEmail}</Text>
 
         {/* ── Stats ── */}
         {stats && (
@@ -516,8 +505,7 @@ export default function DashboardScreen({ navigation }) {
 
 const ds = StyleSheet.create({
   header:       { flexDirection:'row', alignItems:'center', paddingHorizontal:Spacing.md, paddingBottom:Spacing.sm, borderBottomWidth:1, borderBottomColor:Colors.border },
-  backBtn:      { width:40 },
-  title:        { ...Typography.h2, color:Colors.textPrimary, flex:1, textAlign:'center' },
+  title:        { ...Typography.h1, color:Colors.text },
   signOutBtn:   { width:40, alignItems:'flex-end' },
   content:      { padding:Spacing.md, gap:Spacing.md },
   userEmail:    { ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center' },
