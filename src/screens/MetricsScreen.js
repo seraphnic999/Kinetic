@@ -6,7 +6,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, Shadows, IconSize, Elevation } from '../theme';
+import { ChartCard, LineChart } from '../components/Chart';
+import { lbLabel } from '../utils/units';
 import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
 import { PickerModal, PickerField } from '../components/PickerModal';
@@ -30,98 +32,16 @@ const METRICS = {
 };
 const METRIC_OPTIONS = Object.values(METRICS).map(m => ({ key: m.key, label: m.label }));
 
-// ─── Line chart (pure View, onLayout) ────────────────────────────────────────
-function MetricLineChart({ data, color, domain }) {
-  const [w, setW] = useState(0);
-  if (!data?.length) return null;
+/** Chart.js takes { label, value }; metrics arrive as { date, value }. */
+const toSeries = (rows) => rows.map(r => ({ key: r.date, label: shortDate(r.date), value: r.value }));
 
-  const HEIGHT = 110;
-  const DOT    = 7;
-  const PAD    = DOT;
-
-  const values = data.map(d => d.value);
-  const min    = domain?.[0] ?? Math.min(...values);
-  const max    = domain?.[1] ?? Math.max(...values);
-  const range  = Math.max(max - min, 0.01);
-
-  const pts = w > 0 ? data.map((d, i) => ({
-    x: PAD + (i / Math.max(data.length - 1, 1)) * (w - 2 * PAD),
-    y: PAD + ((max - d.value) / range) * (HEIGHT - 2 * PAD),
-    ...d,
-  })) : [];
-
-  const every = data.length > 10 ? Math.ceil(data.length / 6) : 1;
-
-  return (
-    <View>
-      <View style={{ height: HEIGHT }} onLayout={e => setW(e.nativeEvent.layout.width)}>
-        {w > 0 && pts.slice(0, -1).map((p, i) => {
-          const n = pts[i + 1];
-          const dx = n.x - p.x, dy = n.y - p.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-          return (
-            <View key={`l${i}`} style={{
-              position: 'absolute',
-              left: (p.x + n.x) / 2 - len / 2,
-              top:  (p.y + n.y) / 2 - 1.5,
-              width: len, height: 3,
-              backgroundColor: color + '70',
-              transform: [{ rotate: `${ang}deg` }],
-            }} />
-          );
-        })}
-        {w > 0 && pts.map((p, i) => (
-          <View key={`d${i}`} style={{
-            position: 'absolute',
-            left: p.x - DOT / 2, top: p.y - DOT / 2,
-            width: DOT, height: DOT, borderRadius: DOT / 2,
-            backgroundColor: color,
-            borderWidth: 2, borderColor: Colors.background,
-          }} />
-        ))}
-        {w > 0 && <>
-          <Text style={[lc.axisLabel, { top: PAD - 8 }]}>{Number.isInteger(max) ? max : max.toFixed(1)}</Text>
-          <Text style={[lc.axisLabel, { bottom: 4 }]}>{Number.isInteger(min) ? min : min.toFixed(1)}</Text>
-        </>}
-      </View>
-      {w > 0 && (
-        <View style={{ flexDirection: 'row', marginTop: 4 }}>
-          {data.map((d, i) => (
-            <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              {i % every === 0 && <Text style={lc.xLabel}>{shortDate(d.date)}</Text>}
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-const lc = StyleSheet.create({
-  axisLabel: { position: 'absolute', right: 0, fontSize: 8, color: Colors.textMuted },
-  xLabel:    { fontSize: 8, color: Colors.textMuted },
-});
-
-// ─── Chart card ───────────────────────────────────────────────────────────────
-function ChartCard({ title, icon, color, data, unit, domain, latest }) {
-  if (!data?.length) return null;
-  return (
-    <View style={cc.card}>
-      <View style={cc.header}>
-        <Icon name={icon} size={IconSize.meta} color={color} />
-        <Text style={cc.title}>{title}</Text>
-        {latest != null && <Text style={[cc.latest, { color }]}>{latest}{unit}</Text>}
-      </View>
-      <MetricLineChart data={data} color={color} domain={domain} />
-    </View>
-  );
-}
-const cc = StyleSheet.create({
-  card:   { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.md, gap: Spacing.sm, ...Shadows.card },
-  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  title:  { ...Typography.label, color: Colors.textSecondary, flex: 1, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
-  latest: { ...Typography.h3, fontWeight: '700' },
-});
+/** "−1.8 kg over this period" — the change the window actually covers. */
+const delta = (rows, unit) => {
+  if (rows.length < 2) return undefined;
+  const d = Math.round((rows.at(-1).value - rows[0].value) * 10) / 10;
+  if (d === 0) return 'no change';
+  return `${d > 0 ? '+' : '−'}${Math.abs(d)} ${unit}`;
+};
 
 // ─── Period selector ──────────────────────────────────────────────────────────
 function PeriodSelector({ value, onChange }) {
@@ -340,26 +260,40 @@ export default function MetricsScreen({ navigation }) {
           </View>
         </View>
 
-        {/* ── Charts ── */}
+        {/* ── Charts ──
+            One period selector drives all three. The dashboard used to show
+            these over its own hard-coded 12-week window while this screen used
+            a selectable one, which meant two different answers to "what do I
+            weigh". The dashboard now shows a three-readout strip instead. */}
         {hasAnyHistory && (
           <View style={s.section}>
             <Text style={s.sectionLabel}>History</Text>
             <PeriodSelector value={period} onChange={setPeriod} />
 
             {chartData.weight.length >= 2 && (
-              <ChartCard title="Weight" icon="bodyProfile" color={Colors.blue}
-                data={chartData.weight} unit=" kg"
-                latest={chartData.weight.at(-1)?.value.toFixed(1)} />
+              <ChartCard title="Weight" icon="scale"
+                subtitle={delta(chartData.weight, 'kg')}
+                right={<Text style={s.latest}>{chartData.weight.at(-1).value.toFixed(1)} kg</Text>}>
+                <LineChart data={toSeries(chartData.weight)} color={Colors.ice}
+                           format={v => v.toFixed(1)} />
+                <Text style={s.shadow}>{lbLabel(chartData.weight.at(-1).value)}</Text>
+              </ChartCard>
             )}
             {chartData.waist.length >= 2 && (
-              <ChartCard title="Waist" icon="tape" color={Colors.amber}
-                data={chartData.waist} unit=" cm"
-                latest={chartData.waist.at(-1)?.value.toFixed(1)} />
+              <ChartCard title="Waist" icon="tape"
+                subtitle={delta(chartData.waist, 'cm')}
+                right={<Text style={s.latest}>{chartData.waist.at(-1).value.toFixed(1)} cm</Text>}>
+                <LineChart data={toSeries(chartData.waist)} color={Colors.warn}
+                           format={v => v.toFixed(1)} />
+              </ChartCard>
             )}
             {chartData.diet.length >= 2 && (
-              <ChartCard title="Diet adherence" icon="diet" color={Colors.gold}
-                data={chartData.diet} unit="%" domain={[0, 100]}
-                latest={chartData.diet.at(-1)?.value} />
+              <ChartCard title="Diet adherence" icon="diet"
+                subtitle={delta(chartData.diet, '%')}
+                right={<Text style={s.latest}>{chartData.diet.at(-1).value}%</Text>}>
+                <LineChart data={toSeries(chartData.diet)} color={Colors.gold}
+                           domain={[0, 100]} format={v => String(Math.round(v))} />
+              </ChartCard>
             )}
           </View>
         )}
@@ -398,6 +332,8 @@ const s = StyleSheet.create({
   dietFill:     { height: '100%', borderRadius: 3 },
   saveBtn:      { height: 52, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
   saveTxt:      { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  latest:       { ...Typography.metric, color: Colors.text },
+  shadow:       { ...Typography.caption, color: Colors.textFaint, marginTop: Spacing.xs },
   empty:        { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
   emptyTxt:     { ...Typography.body, color: Colors.textMuted, textAlign: 'center', lineHeight: 22 },
 });

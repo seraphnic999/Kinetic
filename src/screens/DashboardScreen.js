@@ -1,340 +1,359 @@
-import React, { useState, useCallback, useEffect } from 'react';
+/**
+ * Stats.
+ *
+ * Everything here answers one of three questions, in this order because that is
+ * the order of how much they matter:
+ *
+ *   1. Am I showing up?       tiles, activity grid
+ *   2. Am I getting stronger? records, e1RM progression, volume trend
+ *   3. Am I balanced?         body split, lift vs cardio
+ *
+ * Plus a body strip — three readouts rather than three duplicated charts. Body
+ * metrics live on the Body tab, and the dashboard used to quietly show them
+ * over a different window (weekly averages over 12 weeks) than the Body tab
+ * did (per-day entries over a selectable period). Two truths for one weight.
+ *
+ * What this replaces: four cumulative stat cards — sessions, total time, active
+ * days, kg lifted — capped at the last N sessions, in four unrelated colours.
+ * A number that can only go up is not information.
+ */
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize, Elevation } from '../theme';
 import { Icon } from '../components/Icon';
-import { supabase } from '../config/supabase';
+import { ChartCard, BarChart, LineChart } from '../components/Chart';
 import { PickerModal, PickerField } from '../components/PickerModal';
+import { supabase } from '../config/supabase';
 import {
-  fmtDate, fmtDur, fmtVolume,
-  shapeSessions, computeStats, computeCharts, computeProgression, computeMetricCharts,
-  buildCalendar, exerciseDetail, WEEKDAY_LABELS,
-  CALENDAR_DAYS, CHART_WEEKS, SESSION_LIMIT, RECENT_LIMIT,
+  shapeSessions, deriveAll, computeHeadline, computeCharts, computeProgression,
+  computeRecords, computeBodySplit, computeLiftVsCardio, computeBodyStrip,
+  buildCalendar, groupByWeek, exerciseDetail,
+  fmtDur, fmtTonnes, fmtDelta, fmtVolume, dayLabel,
+  WEEKDAY_LABELS, SESSION_LIMIT, CHART_WEEKS,
 } from '../utils/analytics';
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
-function BarChart({ data, height = 110, color = Colors.primary, valueFormatter }) {
-  if (!data?.length) return null;
-  const max = Math.max(...data.map(d => d.value), 1);
-  const fmt = valueFormatter ?? (v => v > 999 ? `${(v/1000).toFixed(1)}k` : String(v));
-  // Only show labels for every Nth bar to avoid crowding
-  const every = data.length > 8 ? Math.ceil(data.length / 6) : 1;
+/** Body section → its glyph. The eight the icon set exists for. */
+const SECTION_ICON = {
+  Chest: 'bodyChest', Back: 'bodyBack', Shoulders: 'bodyShoulders',
+  'Front Arms': 'bodyArmsFront', 'Back Arms': 'bodyArmsBack',
+  Legs: 'bodyLegs', Core: 'bodyCore', Other: 'bodyOther',
+};
 
+// ─── Headline tiles ───────────────────────────────────────────────────────────
+
+function Tile({ label, value, unit, sub, tone }) {
   return (
-    <View>
-      <View style={{ height, flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-        {data.map((d, i) => {
-          const barH = Math.max(d.value > 0 ? 4 : 0, (d.value / max) * (height - 16));
-          const isPeak = d.value === max && max > 0;
-          return (
-            <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
-              {d.value > 0 && (
-                <Text style={{ fontSize: 8, color: isPeak ? color : Colors.textMuted, marginBottom: 2 }}>
-                  {fmt(d.value)}
-                </Text>
-              )}
-              <View style={{
-                width: '70%', height: barH,
-                backgroundColor: isPeak ? color : color + '55',
-                borderRadius: 3,
-                minHeight: d.value > 0 ? 4 : 0,
-              }} />
-            </View>
-          );
-        })}
-      </View>
-      <View style={{ flexDirection: 'row', marginTop: 4 }}>
-        {data.map((d, i) => (
-          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-            {i % every === 0 && (
-              <Text style={{ fontSize: 8, color: Colors.textMuted }}>{d.label}</Text>
-            )}
-          </View>
-        ))}
-      </View>
+    <View style={t.tile}>
+      <Text style={t.label}>{label}</Text>
+      <Text style={t.value} numberOfLines={1}>
+        {value}{unit ? <Text style={t.unit}> {unit}</Text> : null}
+      </Text>
+      <Text style={[t.sub, tone === 'up' && t.up, tone === 'down' && t.down]} numberOfLines={1}>
+        {sub}
+      </Text>
     </View>
   );
 }
 
-// ─── Line Chart (pure View geometry) ─────────────────────────────────────────
-function LineChart({ data, color = Colors.primary, unit = 'kg' }) {
+function Headline({ h }) {
+  const d = h.sessions.delta;
+  const vol = h.volumeKg;
+  const ul = h.underLoad;
+  const [volValue, volUnit] = fmtTonnes(vol.value).split(' ');
+  return (
+    <View style={t.grid}>
+      <Tile
+        label="This week"
+        value={h.sessions.value}
+        unit={h.sessions.value === 1 ? 'session' : 'sessions'}
+        sub={d === 0 ? 'same as last week' : `${d > 0 ? '+' : '−'}${Math.abs(d)} vs last week`}
+        tone={d > 0 ? 'up' : d < 0 ? 'down' : null}
+      />
+      <Tile
+        label="Volume" value={volValue} unit={volUnit}
+        sub={vol.deltaPct == null ? 'no week to compare' : `${fmtDelta(vol.deltaPct)} vs last week`}
+        tone={vol.deltaPct > 0 ? 'up' : vol.deltaPct < 0 ? 'down' : null}
+      />
+      <Tile
+        label="Under load"
+        value={ul.workSecs == null ? '—' : fmtDur(ul.workSecs)}
+        sub={ul.workSecs == null
+          ? 'no timed sets yet'
+          : `of ${fmtDur(ul.totalSecs)} · ${Math.round(ul.density * 100)}%`}
+      />
+      <Tile
+        label="Streak" value={h.streak.current}
+        unit={h.streak.current === 1 ? 'week' : 'weeks'}
+        sub={`best ${h.streak.best}`}
+        tone={h.streak.current > 0 ? 'up' : null}
+      />
+    </View>
+  );
+}
+
+const t = StyleSheet.create({
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  tile: {
+    flexGrow: 1, flexBasis: '46%', backgroundColor: Colors.surface,
+    borderRadius: Radius.lg, padding: Spacing.md, gap: 2, ...Elevation.card,
+  },
+  label: { ...Typography.label, color: Colors.textFaint },
+  value: { ...Typography.statHuge, color: Colors.text },
+  unit:  { ...Typography.body, color: Colors.textMuted },
+  sub:   { ...Typography.caption, color: Colors.textFaint },
+  up:    { color: Colors.gold },
+  down:  { color: Colors.warn },
+});
+
+// ─── Activity grid ────────────────────────────────────────────────────────────
+
+const LABEL_COL = 46;
+const GAP = 4;
+
+/** Cells encode VOLUME, not mere presence — four steps of the person's own range. */
+function ActivityGrid({ derived }) {
   const [w, setW] = useState(0);
-  if (!data?.length) return null;
-
-  const HEIGHT = 110;
-  const DOT = 7;
-  const PAD = DOT / 2 + 2;
-  const max = Math.max(...data.map(d => d.value), 1);
-  const min = Math.min(...data.map(d => d.value));
-  const range = max - min || 1;
-  const every = data.length > 8 ? Math.ceil(data.length / 6) : 1;
-
-  const pts = w > 0 ? data.map((d, i) => ({
-    x: PAD + (i / Math.max(data.length - 1, 1)) * (w - 2 * PAD),
-    y: PAD + ((max - d.value) / range) * (HEIGHT - 2 * PAD),
-    ...d,
-  })) : [];
+  const weeks = buildCalendar(derived);
+  const grid = Math.max(w - LABEL_COL, 0);
+  const cell = grid > 0 ? Math.floor((grid - GAP * 6) / 7) : 0;
+  const tint = [null, Colors.emberDim, 'rgba(255,107,43,0.5)', Colors.ember];
 
   return (
-    <View>
-      <View
-        style={{ height: HEIGHT }}
-        onLayout={e => setW(e.nativeEvent.layout.width)}
-      >
-        {w > 0 && pts.slice(0, -1).map((p, i) => {
-          const n  = pts[i + 1];
-          const dx = n.x - p.x, dy = n.y - p.y;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          const ang = Math.atan2(dy, dx) * 180 / Math.PI;
-          return (
-            <View key={`l${i}`} style={{
-              position: 'absolute',
-              left: (p.x + n.x) / 2 - len / 2,
-              top:  (p.y + n.y) / 2 - 1.5,
-              width: len, height: 3,
-              backgroundColor: color + '70',
-              transform: [{ rotate: `${ang}deg` }],
-            }} />
-          );
-        })}
-        {w > 0 && pts.map((p, i) => (
-          <View key={`d${i}`} style={{
-            position: 'absolute',
-            left: p.x - DOT / 2, top: p.y - DOT / 2,
-            width: DOT, height: DOT, borderRadius: DOT / 2,
-            backgroundColor: color,
-            borderWidth: 2, borderColor: Colors.background,
-          }} />
+    <View onLayout={e => setW(e.nativeEvent.layout.width)}>
+      <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+        <View style={{ width: LABEL_COL }} />
+        {WEEKDAY_LABELS.map((l, i) => (
+          <Text key={i} style={[a.head, { width: cell, marginRight: i < 6 ? GAP : 0 }]}>{l}</Text>
         ))}
-        {/* Y-axis labels at max and min */}
-        {w > 0 && (
-          <>
-            <Text style={{ position: 'absolute', right: 0, top: PAD - 8, fontSize: 8, color: Colors.textMuted }}>
-              {max}{unit}
-            </Text>
-            <Text style={{ position: 'absolute', right: 0, bottom: 4, fontSize: 8, color: Colors.textMuted }}>
-              {min}{unit}
-            </Text>
-          </>
-        )}
       </View>
-      {/* X labels */}
-      {w > 0 && (
-        <View style={{ flexDirection: 'row', marginTop: 4 }}>
-          {data.map((d, i) => (
-            <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-              {i % every === 0 && (
-                <Text style={{ fontSize: 8, color: Colors.textMuted }}>{d.label}</Text>
-              )}
-            </View>
+      {cell > 0 && weeks.map((week, wi) => (
+        <View key={wi} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: GAP }}>
+          <Text style={[a.week, { width: LABEL_COL }]}>{dayLabel(week[0].key)}</Text>
+          {week.map((day, di) => (
+            <View
+              key={di}
+              style={{
+                width: cell, height: cell, borderRadius: 4,
+                marginRight: di < 6 ? GAP : 0,
+                backgroundColor: day.level ? tint[day.level] : Colors.raised,
+                opacity: day.future ? 0.25 : 1,
+              }}
+            />
           ))}
         </View>
-      )}
+      ))}
     </View>
   );
 }
+const a = StyleSheet.create({
+  head: { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
+  week: { ...Typography.caption, color: Colors.textFaint },
+});
 
-// ─── Stat card ────────────────────────────────────────────────────────────────
-function StatCard({ icon, value, label, color = Colors.primary }) {
+// ─── Records ──────────────────────────────────────────────────────────────────
+
+function Records({ records, onOpen }) {
   return (
-    <View style={st.card}>
-      <Icon name={icon} size={IconSize.row} color={color} />
-      <Text style={[st.value, { color }]}>{value}</Text>
-      <Text style={st.label}>{label}</Text>
+    <View style={{ gap: Spacing.xs }}>
+      {records.map((r, i) => (
+        <TouchableOpacity key={`${r.exercise}-${r.dayKey}-${i}`} style={rc.row}
+                          onPress={() => onOpen(r.exercise)} activeOpacity={0.8}>
+          <Icon name="trophy" size={IconSize.meta} color={Colors.gold} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={rc.name} numberOfLines={1}>{r.exercise}</Text>
+            <Text style={rc.meta} numberOfLines={1}>
+              {r.e1rm} kg e1RM · {r.weightKg}×{r.reps}
+              {r.gain != null ? ` · +${r.gain} since ${dayLabel(r.sinceDayKey)}` : ' · first record'}
+            </Text>
+          </View>
+          <Icon name="chevronRight" size={IconSize.pip} color={Colors.gold} />
+        </TouchableOpacity>
+      ))}
     </View>
+  );
+}
+const rc = StyleSheet.create({
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+    backgroundColor: Colors.goldDim, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: 'rgba(255,201,60,0.22)',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+  },
+  name: { ...Typography.h3, color: Colors.text },
+  meta: { ...Typography.caption, color: Colors.textMuted, marginTop: 1 },
+});
+
+// ─── Body split ───────────────────────────────────────────────────────────────
+
+function BodySplit({ split }) {
+  const max = split[0]?.pct || 1;
+  return (
+    <View style={{ gap: Spacing.sm }}>
+      {split.map(s => {
+        // The uncomfortable one earns a colour: under a tenth of your volume is
+        // the number actually worth seeing.
+        const low = s.pct < 10;
+        return (
+          <View key={s.section} style={bs.row}>
+            <Icon
+              name={SECTION_ICON[s.section] ?? 'bodyOther'}
+              size={IconSize.meta}
+              color={low ? Colors.warn : Colors.textMuted}
+            />
+            <Text style={bs.name} numberOfLines={1}>{s.section}</Text>
+            <View style={bs.track}>
+              <View style={[bs.fill, {
+                width: `${Math.max(2, (s.pct / max) * 100)}%`,
+                backgroundColor: low ? Colors.warn : Colors.ember,
+              }]} />
+            </View>
+            <Text style={[bs.pct, low && { color: Colors.warn }]}>{s.pct}%</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+const bs = StyleSheet.create({
+  row:   { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  name:  { ...Typography.bodySmall, color: Colors.textMuted, width: 84 },
+  track: { flex: 1, height: 8, borderRadius: 4, backgroundColor: Colors.raised, overflow: 'hidden' },
+  fill:  { height: '100%', borderRadius: 4 },
+  pct:   { ...Typography.caption, color: Colors.textMuted, width: 34, textAlign: 'right' },
+});
+
+// ─── Body strip ───────────────────────────────────────────────────────────────
+
+function BodyStrip({ strip, onPress }) {
+  const cells = [
+    strip.weight && { icon: 'scale', label: 'Weight', value: strip.weight.value, unit: 'kg',
+                      delta: strip.weight.delta, days: strip.weight.days, better: 'down' },
+    strip.waist && { icon: 'tape', label: 'Waist', value: strip.waist.value, unit: 'cm',
+                     delta: strip.waist.delta, days: strip.waist.days, better: 'down' },
+    strip.diet && { icon: 'diet', label: 'Diet', value: strip.diet.value, unit: '%',
+                    sub: `${strip.diet.days}d avg` },
+  ].filter(Boolean);
+
+  if (!cells.length) return null;
+
+  return (
+    <TouchableOpacity style={st.strip} onPress={onPress} activeOpacity={0.8}
+                      accessibilityRole="button" accessibilityLabel="Open the Body tab">
+      {cells.map(c => {
+        const good = c.delta != null && c.delta !== 0 && ((c.better === 'down') === (c.delta < 0));
+        const bad  = c.delta != null && c.delta !== 0 && !good;
+        return (
+          <View key={c.label} style={st.cell}>
+            <Icon name={c.icon} size={IconSize.meta} color={Colors.textMuted} />
+            <Text style={st.label}>{c.label}</Text>
+            <Text style={st.value}>{c.value}<Text style={st.unit}>{c.unit}</Text></Text>
+            <Text style={[st.sub, good && { color: Colors.gold }, bad && { color: Colors.warn }]}>
+              {c.sub ?? (c.delta == null
+                ? `${c.days}d`
+                : `${c.delta > 0 ? '+' : '−'}${Math.abs(c.delta)} · ${c.days}d`)}
+            </Text>
+          </View>
+        );
+      })}
+    </TouchableOpacity>
   );
 }
 const st = StyleSheet.create({
-  card:  { flexGrow:1, flexBasis:'45%', backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, alignItems:'center', gap:4, ...Shadows.card },
-  value: { ...Typography.h2, fontWeight:'700' },
-  label: { ...Typography.bodySmall, color:Colors.textSecondary, textAlign:'center' },
+  strip: {
+    flexDirection: 'row', backgroundColor: Colors.surface,
+    borderRadius: Radius.lg, padding: Spacing.md, ...Elevation.card,
+  },
+  cell:  { flex: 1, alignItems: 'center', gap: 2 },
+  label: { ...Typography.label, color: Colors.textFaint },
+  value: { ...Typography.metric, color: Colors.text, fontSize: 20 },
+  unit:  { ...Typography.caption, color: Colors.textMuted },
+  sub:   { ...Typography.caption, color: Colors.textFaint },
 });
 
-// ─── Activity calendar ────────────────────────────────────────────────────────
-const CAL_LABEL_COL = 46;
-const CAL_GAP = 4;
+// ─── Session rows ─────────────────────────────────────────────────────────────
 
-// Rows are whole Sunday → Saturday weeks, labelled with the week's Sunday.
-function ActivityCalendar({ sessions }) {
-  const [containerW, setContainerW] = useState(0);
-  const weeks = buildCalendar(sessions, CALENDAR_DAYS);
+const STATUS = {
+  complete: ['statusComplete', Colors.gold],
+  partial:  ['statusPartial',  Colors.warn],
+};
 
-  // Cell spans the remaining width evenly across 7 day columns (+ their gaps),
-  // so the grid always fills the card edge-to-edge regardless of screen size.
-  const gridW = Math.max(containerW - CAL_LABEL_COL, 0);
-  const CELL  = gridW > 0 ? Math.floor((gridW - CAL_GAP * 6) / 7) : 0;
-
-  return (
-    <View onLayout={e => setContainerW(e.nativeEvent.layout.width)}>
-      <View style={{ flexDirection:'row', marginBottom:6 }}>
-        <View style={{ width: CAL_LABEL_COL }} />
-        {WEEKDAY_LABELS.map((l,i) => (
-          <Text key={i} style={{ width:CELL, marginRight: i<6?CAL_GAP:0, fontSize:10, color:Colors.textMuted, textAlign:'center' }}>{l}</Text>
-        ))}
-      </View>
-      {CELL > 0 && (
-        <View style={{ flexDirection:'column' }}>
-          {weeks.map((week,wi) => (
-            <View key={wi} style={{ flexDirection:'row', alignItems:'center', marginBottom:CAL_GAP }}>
-              <Text style={{ width: CAL_LABEL_COL, fontSize:9, color:Colors.textMuted }}>
-                {week[0].date.toLocaleDateString('en', { month:'short', day:'numeric' })}
-              </Text>
-              {week.map((day,di) => (
-                <View key={di} style={{
-                  width:CELL, height:CELL, borderRadius:4, marginRight: di<6?CAL_GAP:0,
-                  backgroundColor: day.active ? Colors.primary : Colors.surfaceRaised,
-                  opacity: day.future ? 0.2 : 1,
-                }} />
-              ))}
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-}
-
-// ─── Session row ──────────────────────────────────────────────────────────────
-function SessionRow({ session, expanded, onPress }) {
-  const statusColor = { complete:Colors.gold, partial:Colors.amber, pending:Colors.textMuted };
+function SessionRow({ session, derived, expanded, onPress }) {
   return (
     <TouchableOpacity style={sr.card} onPress={onPress} activeOpacity={0.8}>
       <View style={sr.header}>
-        <View style={{ flex:1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={sr.name} numberOfLines={1}>{session.name}</Text>
-          <Text style={sr.meta}>
-            {fmtDate(session.started_at)} · {fmtDur(session.duration_secs)}
-            {session.exercise_count > 0 ? ` · ${session.exercise_count} exercise${session.exercise_count>1?'s':''}` : ''}
+          <Text style={sr.meta} numberOfLines={1}>
+            {dayLabel(derived.dayKey)} · {fmtDur(derived.durationSecs)}
+            {derived.volumeKg > 0 ? ` · ${fmtVolume(derived.volumeKg)}kg` : ''}
+            {derived.workSecs != null ? ` · ${fmtDur(derived.workSecs)} under load` : ''}
           </Text>
         </View>
-        <Icon name={expanded?'chevronUp':'chevronDown'} size={IconSize.meta} color={Colors.textMuted} />
+        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textFaint} />
       </View>
+
       {expanded && (session.exercises ?? []).length > 0 && (
-        <View style={sr.exercises}>
-          {session.exercises.map((e,i) => (
-            <View key={i} style={sr.exRow}>
-              <View style={[sr.dot, { backgroundColor: statusColor[e.status] ?? Colors.textMuted }]} />
-              <View style={{ flex:1 }}>
-                <Text style={sr.exName}>{e.exercise_name}</Text>
-                {e.body_section ? <Text style={sr.exSub}>{e.body_section}</Text> : null}
+        <View style={sr.body}>
+          {session.exercises.map((e, i) => {
+            const [icon, tint] = STATUS[e.status] ?? ['statusPending', Colors.textFaint];
+            return (
+              <View key={i}>
+                <View style={sr.exRow}>
+                  <Icon name={icon} size={IconSize.pip} color={tint} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={sr.exName} numberOfLines={1}>{e.exercise_name}</Text>
+                    {e.body_section ? <Text style={sr.exSub}>{e.body_section}</Text> : null}
+                  </View>
+                  <Text style={sr.exDetail}>{exerciseDetail(e)}</Text>
+                </View>
+                {/* Combo children, indented under the parent they belong to */}
+                {(e.children ?? []).map((ch, j) => (
+                  <View key={j} style={[sr.exRow, sr.childRow]}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={sr.childName} numberOfLines={1}>{ch.exercise_name}</Text>
+                    </View>
+                    <Text style={sr.exDetail}>{exerciseDetail(ch)}</Text>
+                  </View>
+                ))}
               </View>
-              <Text style={sr.exDetail}>{exerciseDetail(e)}</Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </TouchableOpacity>
   );
 }
 const sr = StyleSheet.create({
-  card:      { backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, marginBottom:Spacing.sm, ...Shadows.card },
-  header:    { flexDirection:'row', alignItems:'center', gap:Spacing.sm },
-  name:      { ...Typography.h3, color:Colors.textPrimary },
-  meta:      { ...Typography.bodySmall, color:Colors.textSecondary, marginTop:2 },
-  exercises: { marginTop:Spacing.md, gap:Spacing.sm, borderTopWidth:1, borderTopColor:Colors.border, paddingTop:Spacing.md },
-  exRow:     { flexDirection:'row', alignItems:'flex-start', gap:Spacing.sm },
-  dot:       { width:8, height:8, borderRadius:4, marginTop:4 },
-  exName:    { ...Typography.body, color:Colors.textPrimary },
-  exSub:     { ...Typography.bodySmall, color:Colors.amber },
-  exDetail:  { ...Typography.bodySmall, color:Colors.textSecondary, alignSelf:'center' },
+  card:   { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.md, ...Elevation.card },
+  header: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  name:   { ...Typography.h3, color: Colors.text },
+  meta:   { ...Typography.caption, color: Colors.textMuted, marginTop: 2 },
+  body:   { marginTop: Spacing.md, gap: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.line, paddingTop: Spacing.md },
+  exRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  childRow:  { paddingLeft: Spacing.xl, marginTop: 4 },
+  exName:    { ...Typography.bodySmall, color: Colors.text },
+  childName: { ...Typography.caption, color: Colors.textMuted },
+  exSub:     { ...Typography.caption, color: Colors.warn },
+  exDetail:  { ...Typography.caption, color: Colors.textMuted },
 });
 
-// ─── Chart card wrapper ───────────────────────────────────────────────────────
-function ChartCard({ title, icon, subtitle, children, empty }) {
-  return (
-    <View style={cc.card}>
-      <View style={cc.header}>
-        <Icon name={icon} size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={cc.title}>{title}</Text>
-        {subtitle ? <Text style={cc.subtitle}>{subtitle}</Text> : null}
-      </View>
-      {empty ? (
-        <Text style={cc.empty}>No data yet</Text>
-      ) : children}
-    </View>
-  );
-}
-const cc = StyleSheet.create({
-  card:     { backgroundColor:Colors.surface, borderRadius:Radius.lg, padding:Spacing.md, ...Shadows.card },
-  header:   { flexDirection:'row', alignItems:'center', gap:Spacing.xs, marginBottom:Spacing.md },
-  title:    { ...Typography.label, color:Colors.textSecondary, flex:1 },
-  subtitle: { ...Typography.bodySmall, color:Colors.textMuted },
-  empty:    { ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center', paddingVertical:Spacing.lg },
-});
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
-// ─── Exercise progression: pill selector + line chart ────────────────────────
-function ExerciseProgression({ sessions, exerciseNames }) {
-  const [selected, setSelected] = useState(null);
-  const [showPicker, setShowPicker] = useState(false);
-
-  // Default to the first exercise, as the web dashboard does, so both open on
-  // the same chart instead of one showing an empty prompt.
-  useEffect(() => {
-    setSelected(prev => prev ?? exerciseNames[0] ?? null);
-  }, [exerciseNames]);
-
-  const progressData = computeProgression(sessions, selected);
-
-  if (!exerciseNames.length) {
-    return (
-      <ChartCard title="Exercise progression" icon="trendUp" empty />
-    );
-  }
-
-  return (
-    <ChartCard
-      title="Exercise progression"
-      icon="trendUp"
-      subtitle="max weight per session"
-    >
-      <View style={{ marginBottom: Spacing.md }}>
-        <PickerField
-          label="Exercise"
-          value={selected}
-          placeholder="Select exercise..."
-          onPress={() => setShowPicker(true)}
-        />
-      </View>
-      <PickerModal
-        visible={showPicker}
-        title="Select Exercise"
-        options={exerciseNames}
-        selected={selected}
-        onSelect={setSelected}
-        onClose={() => setShowPicker(false)}
-      />
-
-      {selected && progressData.length >= 2 && (
-        <LineChart data={progressData} color={Colors.primary} />
-      )}
-      {selected && progressData.length === 1 && (
-        <Text style={{ ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center', paddingVertical:Spacing.lg }}>
-          Need at least 2 sessions with {selected} to show progression.
-        </Text>
-      )}
-      {!selected && (
-        <Text style={{ ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center', paddingVertical:Spacing.md }}>
-          Select an exercise above
-        </Text>
-      )}
-    </ChartCard>
-  );
-}
-
-// ─── Main screen ──────────────────────────────────────────────────────────────
 export default function DashboardScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [sessions, setSessions]     = useState([]);
-  const [stats, setStats]           = useState(null);
-  const [charts, setCharts]         = useState(null);
-  const [metricCharts, setMetricCharts] = useState(null);
-  const [loading, setLoading]       = useState(true);
+  const [shaped, setShaped] = useState([]);
+  const [derived, setDerived] = useState([]);
+  const [metrics, setMetrics] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [expanded, setExpanded]     = useState(null);
+  const [expanded, setExpanded] = useState(null);
+  const [exercise, setExercise] = useState(null);
+  const [picking, setPicking] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -342,36 +361,29 @@ export default function DashboardScreen({ navigation }) {
       if (!auth) return;
 
       const [{ data: raw }, { data: metricRows }] = await Promise.all([
-        supabase
-          .from('workout_sessions')
-          .select(`
-            id, name, started_at, duration_secs,
+        supabase.from('workout_sessions').select(`
+            id, name, started_at, duration_secs, timeline,
             workout_exercises (
-              exercise_type, exercise_name, body_section, status,
-              weight_kg, sets_planned, sets_completed, reps,
-              duration_secs, intervals_planned, intervals_done, perf_order,
+              id, parent_id, exercise_type, exercise_name, body_section, status,
+              weight_kg, sets_planned, sets_completed, reps, duration_secs,
+              intervals_planned, intervals_done, perf_order,
               cardio_type, speed_kmh, incline_pct
             )
-          `)
-          .order('started_at', { ascending: false })
-          .limit(SESSION_LIMIT),
-        supabase
-          .from('body_metrics')
+          `).order('started_at', { ascending: false }).limit(SESSION_LIMIT),
+        supabase.from('body_metrics')
           .select('week_date, weight_kg, waist_cm, diet_pct')
           .eq('user_id', auth.user.id)
-          .order('week_date', { ascending: true })
-          .limit(400),
+          .order('week_date', { ascending: true }).limit(400),
       ]);
 
       if (raw) {
-        const shaped = shapeSessions(raw);
-        setSessions(shaped);
-        setStats(computeStats(shaped));
-        setCharts(computeCharts(shaped, CHART_WEEKS));
+        const s = shapeSessions(raw);
+        setShaped(s);
+        setDerived(deriveAll(s));
       }
-      if (metricRows) setMetricCharts(computeMetricCharts(metricRows, CHART_WEEKS));
+      if (metricRows) setMetrics(metricRows);
     } catch (e) {
-      console.warn('[Dashboard] load error:', e);
+      console.warn('[Stats] load error:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -379,141 +391,196 @@ export default function DashboardScreen({ navigation }) {
   }, []);
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
-  const onRefresh = () => { setRefreshing(true); load(); };
 
   if (loading) return (
-    <View style={{ flex:1, backgroundColor:Colors.background, alignItems:'center', justifyContent:'center' }}>
-      <ActivityIndicator color={Colors.primary} size="large" />
+    <View style={{ flex: 1, backgroundColor: Colors.base, alignItems: 'center', justifyContent: 'center' }}>
+      <ActivityIndicator color={Colors.ember} size="large" />
     </View>
   );
 
-  const hasData = sessions.length > 0;
-  const hasVolume = charts?.volumeData?.some(d => d.value > 0);
+  const hasData = derived.length > 0;
+  const headline = hasData ? computeHeadline(derived) : null;
+  const charts   = hasData ? computeCharts(derived) : null;
+  const records  = hasData ? computeRecords(derived, 4) : [];
+  const split    = hasData ? computeBodySplit(derived) : [];
+  const lc       = hasData ? computeLiftVsCardio(derived) : null;
+  const strip    = computeBodyStrip(metrics);
+  const weeks    = hasData ? groupByWeek(derived).slice(0, 4) : [];
+
+  const selected = exercise ?? charts?.exerciseNames?.[0] ?? null;
+  const progression = selected ? computeProgression(derived, selected) : [];
 
   return (
-    <View style={{ flex:1, backgroundColor:Colors.background }}>
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: Colors.base }}>
       <View style={[ds.header, { paddingTop: insets.top + Spacing.sm }]}>
         <Text style={ds.title}>Stats</Text>
       </View>
 
       <ScrollView
-        style={{ flex:1 }}
-        contentContainerStyle={[ds.content, { paddingBottom: insets.bottom + Spacing.xl }]}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        contentContainerStyle={[ds.content, { paddingBottom: Spacing.xxl }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} tintColor={Colors.ember}
+                          onRefresh={() => { setRefreshing(true); load(); }} />
+        }
       >
-
-        {/* ── Stats ── */}
-        {stats && (
-          <View style={ds.statsRow}>
-            <StatCard icon="barbell"  value={stats.count}                  label="Sessions"    color={Colors.primary} />
-            <StatCard icon="clock"     value={fmtDur(stats.totalSecs)}      label="Total time"  color={Colors.blue} />
-            <StatCard icon="calendar" value={stats.activeDays}             label="Active days" color={Colors.gold} />
-            <StatCard icon="trendUp" value={fmtVolume(stats.totalVolume)} label="kg lifted" color={Colors.amber} />
-          </View>
-        )}
-
-        {!hasData && (
+        {!hasData ? (
           <View style={ds.empty}>
-            <Icon name="barbell" size={IconSize.section} color={Colors.textMuted} />
-            <Text style={ds.emptyTxt}>No synced sessions yet.{'\n'}Complete a workout to see your dashboard.</Text>
+            <Icon name="emptyChart" size={IconSize.empty} color={Colors.textFaint} />
+            <Text style={ds.emptyTitle}>Nothing to measure yet</Text>
+            <Text style={ds.emptyTxt}>Finish a workout and your numbers appear here.</Text>
           </View>
-        )}
-
-        {hasData && (
+        ) : (
           <>
-            {/* ── Activity calendar ── */}
-            <View style={ds.section}>
-              <Text style={ds.sectionTitle}>Activity — last 10 weeks</Text>
-              <View style={cc.card}>
-                <ActivityCalendar sessions={sessions} />
-              </View>
-            </View>
+            {/* 1 — Am I showing up? */}
+            <Headline h={headline} />
 
-            {/* ── Training frequency ── */}
-            <View style={ds.section}>
-              <Text style={ds.sectionTitle}>Charts</Text>
-              <ChartCard
-                title="Training frequency"
-                icon="intervals"
-                subtitle="workouts per week"
-                empty={charts?.freqData?.every(d => d.value === 0)}
-              >
-                {charts?.freqData && (
-                  <BarChart
-                    data={charts.freqData}
-                    color={Colors.blue}
-                    valueFormatter={v => v === 0 ? '' : String(v)}
+            <ChartCard title="Activity" icon="calendar" subtitle="last 10 weeks">
+              <ActivityGrid derived={derived} />
+            </ChartCard>
+
+            {/* 2 — Am I getting stronger? */}
+            {records.length > 0 && (
+              <>
+                <Text style={ds.section}>Records</Text>
+                <Records records={records}
+                         onOpen={name => navigation.navigate('ExerciseDetail', { exercise: name })} />
+              </>
+            )}
+
+            <Text style={ds.section}>Progress</Text>
+
+            <ChartCard
+              title="Estimated 1RM" icon="trendUp" subtitle={selected ?? undefined}
+              right={selected ? (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('ExerciseDetail', { exercise: selected })}
+                  accessibilityRole="button" accessibilityLabel={`Open ${selected}`}>
+                  <Icon name="chevronRight" size={IconSize.meta} color={Colors.textFaint} />
+                </TouchableOpacity>
+              ) : undefined}
+              empty={!selected || progression.length < 2}
+              emptyHint={selected ? `Need two sessions with ${selected}.` : 'No lifting data yet.'}
+            >
+              {charts.exerciseNames.length > 0 && (
+                <View style={{ marginBottom: Spacing.md }}>
+                  <PickerField label="Exercise" value={selected} placeholder="Select exercise…"
+                               onPress={() => setPicking(true)} />
+                </View>
+              )}
+              {progression.length >= 2 && (
+                <>
+                  <LineChart
+                    data={progression}
+                    secondary={progression.map(p => ({ ...p, value: p.raw }))}
+                    color={Colors.ember}
+                    format={v => String(Math.round(v))}
                   />
-                )}
+                  <Text style={ds.note}>
+                    Solid: estimated 1RM. Dashed: the heaviest set it came from.
+                  </Text>
+                </>
+              )}
+            </ChartCard>
+
+            <ChartCard
+              title="Volume" icon="tonnage" subtitle={`${CHART_WEEKS} weeks · 4-week avg`}
+              empty={charts.volumeData.every(d => d.value === 0)}
+            >
+              <BarChart data={charts.volumeData} overlay={charts.volumeAvgData}
+                        color={Colors.ember} format={v => fmtVolume(v)} />
+            </ChartCard>
+
+            <ChartCard
+              title="Frequency" icon="chartBar" subtitle="sessions per week"
+              empty={charts.freqData.every(d => d.value === 0)}
+            >
+              <BarChart data={charts.freqData} color={Colors.ice}
+                        format={v => String(Math.round(v))} />
+            </ChartCard>
+
+            {/* 3 — Am I balanced? */}
+            <Text style={ds.section}>Balance</Text>
+
+            <ChartCard title="Body split" icon="compare" subtitle="last 4 weeks"
+                       empty={split.length === 0}>
+              <BodySplit split={split} />
+            </ChartCard>
+
+            {lc && (lc.liftSecs > 0 || lc.cardioSecs > 0) && (
+              <ChartCard title="Lifting vs cardio" icon="cardio" subtitle="last 4 weeks">
+                <View style={ds.lcTrack}>
+                  <View style={[ds.lcFill, { flex: Math.max(lc.liftPct, 1), backgroundColor: Colors.ember }]} />
+                  <View style={[ds.lcFill, { flex: Math.max(100 - lc.liftPct, 1), backgroundColor: Colors.ice }]} />
+                </View>
+                <View style={ds.lcRow}>
+                  <Text style={ds.lcTxt}>Lifting {fmtDur(lc.liftSecs)}</Text>
+                  <Text style={[ds.lcTxt, { color: Colors.ice }]}>
+                    Cardio {fmtDur(lc.cardioSecs)}{lc.cardioKm > 0 ? ` · ${lc.cardioKm}km` : ''}
+                  </Text>
+                </View>
               </ChartCard>
+            )}
 
-              {/* ── Volume trend ── */}
-              {hasVolume && (
-                <ChartCard
-                  title="Total volume"
-                  icon="barbell"
-                  subtitle="kg lifted per week"
-                >
-                  <BarChart
-                    data={charts.volumeData}
-                    color={Colors.primary}
-                    valueFormatter={v => v === 0 ? '' : fmtVolume(v)}
-                  />
-                </ChartCard>
-              )}
+            {/* Body — one strip, one window, tapping through to the Body tab */}
+            <Text style={ds.section}>Body</Text>
+            <BodyStrip strip={strip} onPress={() => navigation.navigate('Body')} />
 
-              {/* ── Exercise progression ── */}
-              <ExerciseProgression sessions={sessions} exerciseNames={charts?.exerciseNames ?? []} />
-
-              {/* ── Body metrics (weekly averages) ── */}
-              {metricCharts?.weightData?.length >= 2 && (
-                <ChartCard title="Weight" icon="bodyProfile" subtitle="weekly avg · kg">
-                  <LineChart data={metricCharts.weightData} color={Colors.blue} />
-                </ChartCard>
-              )}
-              {metricCharts?.waistData?.length >= 2 && (
-                <ChartCard title="Waist" icon="tape" subtitle="weekly avg · cm">
-                  <LineChart data={metricCharts.waistData} color={Colors.amber} unit="cm" />
-                </ChartCard>
-              )}
-              {metricCharts?.dietData?.length >= 2 && (
-                <ChartCard title="Diet adherence" icon="diet" subtitle="weekly avg · %">
-                  <LineChart data={metricCharts.dietData} color={Colors.gold} unit="%" />
-                </ChartCard>
-              )}
-            </View>
-
-            {/* ── Recent sessions ── */}
-            <View style={ds.section}>
-              <Text style={ds.sectionTitle}>Recent sessions</Text>
-              {sessions.slice(0, RECENT_LIMIT).map(s => (
-                <SessionRow
-                  key={s.id}
-                  session={s}
-                  expanded={expanded === s.id}
-                  onPress={() => setExpanded(ex => ex === s.id ? null : s.id)}
-                />
-              ))}
-            </View>
+            {/* History, grouped by week */}
+            <Text style={ds.section}>History</Text>
+            {weeks.map(week => (
+              <View key={week.key} style={{ gap: Spacing.sm }}>
+                <View style={ds.weekHead}>
+                  <Text style={ds.weekLabel}>{week.label}</Text>
+                  <Text style={ds.weekMeta}>
+                    {week.count} session{week.count === 1 ? '' : 's'} · {fmtTonnes(week.volumeKg)}
+                  </Text>
+                </View>
+                {week.sessions.map(d => {
+                  const session = shaped.find(s => s.id === d.id);
+                  if (!session) return null;
+                  return (
+                    <SessionRow
+                      key={d.id} session={session} derived={d}
+                      expanded={expanded === d.id}
+                      onPress={() => setExpanded(x => (x === d.id ? null : d.id))}
+                    />
+                  );
+                })}
+              </View>
+            ))}
           </>
         )}
       </ScrollView>
+
+      <PickerModal
+        visible={picking}
+        title="Select exercise"
+        options={charts?.exerciseNames ?? []}
+        selected={selected}
+        onSelect={setExercise}
+        onClose={() => setPicking(false)}
+      />
     </View>
   );
 }
 
 const ds = StyleSheet.create({
-  header:       { flexDirection:'row', alignItems:'center', paddingHorizontal:Spacing.md, paddingBottom:Spacing.sm, borderBottomWidth:1, borderBottomColor:Colors.border },
-  title:        { ...Typography.h1, color:Colors.text },
-  signOutBtn:   { width:40, alignItems:'flex-end' },
-  content:      { padding:Spacing.md, gap:Spacing.md },
-  userEmail:    { ...Typography.bodySmall, color:Colors.textMuted, textAlign:'center' },
-  // Four stat cards wrap into a 2×2 grid rather than being squeezed into one
-  // row — "12h 05m" needs room to stay on a single line.
-  statsRow:     { flexDirection:'row', flexWrap:'wrap', gap:Spacing.sm },
-  section:      { gap:Spacing.sm },
-  sectionTitle: { ...Typography.label, color:Colors.textSecondary, textTransform:'uppercase', letterSpacing:1, fontSize:11 },
-  empty:        { alignItems:'center', paddingVertical:Spacing.xxl, gap:Spacing.md },
-  emptyTxt:     { ...Typography.body, color:Colors.textMuted, textAlign:'center', lineHeight:22 },
+  header:  { paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.line },
+  title:   { ...Typography.h1, color: Colors.text },
+  content: { padding: Spacing.md, gap: Spacing.sm },
+  section: { ...Typography.label, color: Colors.textFaint, marginTop: Spacing.lg },
+  note:    { ...Typography.caption, color: Colors.textFaint, marginTop: Spacing.sm },
+
+  weekHead:  { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: Spacing.sm },
+  weekLabel: { ...Typography.label, color: Colors.textMuted },
+  weekMeta:  { ...Typography.caption, color: Colors.textFaint },
+
+  lcTrack: { flexDirection: 'row', height: 10, borderRadius: 5, overflow: 'hidden', gap: 2 },
+  lcFill:  { height: '100%' },
+  lcRow:   { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.sm },
+  lcTxt:   { ...Typography.caption, color: Colors.ember },
+
+  empty:      { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
+  emptyTitle: { ...Typography.h3, color: Colors.textMuted },
+  emptyTxt:   { ...Typography.bodySmall, color: Colors.textFaint, textAlign: 'center' },
 });
