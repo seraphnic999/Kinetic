@@ -4,7 +4,7 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, DIGITAL_FONT, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize } from '../theme';
 import { Icon } from '../components/Icon';
 import { supabase } from '../config/supabase';
 
@@ -107,7 +107,10 @@ export default function LoginScreen() {
 const s = StyleSheet.create({
   root:     { flexGrow: 1, alignItems: 'center', padding: Spacing.lg, paddingBottom: Spacing.xxl },
   logoRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginBottom: Spacing.xs },
-  logo:     { fontFamily: DIGITAL_FONT, fontSize: 32, color: Colors.primary, letterSpacing: 4 },
+  // NOT the seven-segment face. DSEG7 has no letterforms — it rendered the
+  // wordmark as garbage on device. "DSEG7 renders a clock, Barlow renders a
+  // record" (docs/DESIGN.md §3.1); a wordmark is neither, so it takes display.
+  logo:     { ...Typography.h1, fontSize: 34, color: Colors.ember, letterSpacing: 4 },
   tagline:  { ...Typography.body, color: Colors.textSecondary, marginBottom: Spacing.xxl },
   card:     { width: '100%', backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.xl, gap: Spacing.sm },
   cardTitle:{ ...Typography.h2, color: Colors.textPrimary, marginBottom: Spacing.sm },
