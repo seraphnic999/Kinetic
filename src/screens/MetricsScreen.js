@@ -273,10 +273,17 @@ export default function MetricsScreen({ navigation }) {
             {chartData.weight.length >= 2 && (
               <ChartCard title="Weight" icon="scale"
                 subtitle={delta(chartData.weight, 'kg')}
-                right={<Text style={s.latest}>{chartData.weight.at(-1).value.toFixed(1)} kg</Text>}>
+                right={
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={s.latest}>{chartData.weight.at(-1).value.toFixed(1)} kg</Text>
+                    {/* The pound shadow belongs BESIDE the value it converts. Placed
+                        after the chart it landed under the date axis and read as
+                        though it labelled the first date. */}
+                    <Text style={s.shadow}>{lbLabel(chartData.weight.at(-1).value)}</Text>
+                  </View>
+                }>
                 <LineChart data={toSeries(chartData.weight)} color={Colors.ice}
                            format={v => v.toFixed(1)} />
-                <Text style={s.shadow}>{lbLabel(chartData.weight.at(-1).value)}</Text>
               </ChartCard>
             )}
             {chartData.waist.length >= 2 && (
@@ -333,7 +340,7 @@ const s = StyleSheet.create({
   saveBtn:      { height: 52, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
   saveTxt:      { ...Typography.h3, color: Colors.background, fontWeight: '700' },
   latest:       { ...Typography.metric, color: Colors.text },
-  shadow:       { ...Typography.caption, color: Colors.textFaint, marginTop: Spacing.xs },
+  shadow:       { ...Typography.caption, color: Colors.textFaint },
   empty:        { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
   emptyTxt:     { ...Typography.body, color: Colors.textMuted, textAlign: 'center', lineHeight: 22 },
 });

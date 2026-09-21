@@ -6,9 +6,16 @@ import {
 } from 'react-native';
 import { useKeepAwake } from 'expo-keep-awake';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent } from '../theme';
 import { Icon } from '../components/Icon';
+import { Sheet } from '../components/Sheet';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { SetPips } from '../components/SetPips';
+import { WeightField, RepsField } from '../components/NumberField';
+import { RestHero } from '../components/RestHero';
+import { EmptyState } from '../components/States';
 import { formatTime } from '../utils/time';
+import { lbLabel } from '../utils/units';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { syncWorkout } from '../utils/syncWorkout';
@@ -69,10 +76,16 @@ function fastForwardIntervals(state, phaseEndMs, nowMs) {
 }
 
 const PHASE_COLOR = {
-  [PHASE.WALKING]:   Colors.blue,
-  [PHASE.TRANS_IN]:  Colors.amber,
-  [PHASE.RUNNING]:   Colors.primary,
-  [PHASE.TRANS_OUT]: Colors.amber,
+  [PHASE.WALKING]:   Colors.ice,
+  [PHASE.TRANS_IN]:  Colors.warn,
+  [PHASE.RUNNING]:   Colors.ember,
+  [PHASE.TRANS_OUT]: Colors.warn,
+};
+
+const SECTION_ICON = {
+  Chest: 'bodyChest', Back: 'bodyBack', Shoulders: 'bodyShoulders',
+  'Front Arms': 'bodyArmsFront', 'Back Arms': 'bodyArmsBack',
+  Legs: 'bodyLegs', Core: 'bodyCore', Other: 'bodyOther',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -161,205 +174,114 @@ const initExerciseStates = (exercises) => {
   return s;
 };
 
-// ─── Status dot ───────────────────────────────────────────────────────────────
-function StatusDot({ status }) {
-  if (status === 'complete') return <Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} />;
-  if (status === 'partial')  return <Icon name="statusPartial" size={IconSize.pip} color={Colors.amber} />;
-  return <View style={dotStyles.empty} />;
-}
-const dotStyles = StyleSheet.create({
-  empty: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: Colors.border },
-});
-
 // ─── Regular exercise detail ───────────────────────────────────────────────────
-function RegularDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack }) {
-  const done     = state.setsLeft === 0;
-  const started  = state.setStartedAt != null;
-
-  // Live elapsed counter while set is in progress. `now` must be re-seeded the
-  // moment the set starts — otherwise it still holds the timestamp from when
-  // this detail view mounted, which is *earlier* than setStartedAt and shows a
-  // negative elapsed time until the first interval tick lands.
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!started) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [started, state.setStartedAt]);
-  const setElapsed = started ? Math.max(0, Math.floor((now - state.setStartedAt) / 1000)) : 0;
+// Sheet BODY only. The header (name, body part, close chevron) belongs to the
+// Sheet, and the action lives in a fixed footer bar — see `renderSheetFooter`.
+// Nothing here scrolls out of reach of the thumb.
+function RegularDetail({ exercise, state, onUpdate }) {
+  const total = exercise.sets ?? 0;
+  const done  = Math.max(0, total - (state.setsLeft ?? 0));
 
   return (
-    <View style={d.container}>
-      <Text style={d.name}>{getExerciseName(exercise)}</Text>
-      {exercise.bodySection ? <Text style={d.subtitle}>{exercise.bodySection}</Text> : null}
-
-      <View style={d.heroStepperRow}>
-        <Stepper size="large" label="SETS LEFT" value={state.setsLeft} min={0} max={99}
-          onChange={v => onUpdate({ setsLeft: v })} fillRow={false} />
+    <View style={d.body}>
+      <View style={d.progress}>
+        <SetPips total={total} done={done} size={12} />
+        <Text style={d.progressTxt}>
+          {done} of {total} {total === 1 ? 'set' : 'sets'}
+        </Text>
       </View>
 
-      <View style={d.stepperRow}>
-        <Stepper size="large" label="WEIGHT (kg)" value={state.weight} min={0} max={500}
-          onChange={v => onUpdate({ weight: v })} />
-        <Stepper size="large" label="REPS" value={state.reps} min={1} max={999}
-          onChange={v => onUpdate({ reps: v })} />
+      <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })} />
+      <RepsField   value={state.reps}   onChange={v => onUpdate({ reps: v })} />
+
+      {/* Plans change mid-session — one more set, or one fewer because the
+          weight went up. Quiet, because it is the exception. */}
+      <View style={d.adjustRow}>
+        <Text style={d.adjustLabel}>SETS LEFT</Text>
+        <Stepper value={state.setsLeft} min={0} max={99}
+                 onChange={v => onUpdate({ setsLeft: v })} fillRow={false} />
       </View>
-
-      {done ? (
-        <View style={d.doneBadge}>
-          <Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} />
-          <Text style={d.doneText}>Complete!</Text>
-        </View>
-      ) : !started ? (
-        /* Waiting to start — show START SET */
-        <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
-          <Icon name="play" size={IconSize.row} color={Colors.background} />
-          <Text style={d.actionTxt}>START SET</Text>
-        </TouchableOpacity>
-      ) : (
-        /* Set in progress — show elapsed + SET DONE */
-        <>
-          <View style={d.elapsedRow}>
-            <Icon name="timer" size={IconSize.meta} color={Colors.amber} />
-            <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
-          </View>
-          <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
-            <Icon name="check" size={IconSize.row} color={Colors.background} />
-            <Text style={d.actionTxt}>SET DONE</Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={d.backTxt}>Back to exercises</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 // ─── Combo detail ─────────────────────────────────────────────────────────────
-function ComboDetail({ exercise, state, onUpdate, onSetStart, onSetDone, onBack }) {
-  const done    = state.setsLeft === 0;
-  const started = state.setStartedAt != null;
+// A combo can carry five sub-exercises, so each one gets a compact stepper pair
+// rather than the full plate-math field — five of those would be three screens
+// of scrolling. The step is still 2.5 kg, and each weight still carries its
+// pound shadow, because the reason for the shadow does not change with layout.
+function ComboDetail({ exercise, state, onUpdate }) {
+  const total = exercise.sets ?? 0;
+  const done  = Math.max(0, total - (state.setsLeft ?? 0));
 
-  // See RegularDetail — `now` is re-seeded on start so the first render of the
-  // elapsed counter isn't computed against a stale (pre-start) timestamp.
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!started) return;
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [started, state.setStartedAt]);
-  const setElapsed = started ? Math.max(0, Math.floor((now - state.setStartedAt) / 1000)) : 0;
   return (
-    <View style={d.container}>
-      <View style={d.titleRow}>
-        <Icon name="combo" size={IconSize.section} color={Colors.ice} />
-        <Text style={d.name}>{exercise.name || 'Combo'}</Text>
+    <View style={d.body}>
+      <View style={d.progress}>
+        <SetPips total={total} done={done} size={12} tone={Colors.ice} />
+        <Text style={d.progressTxt}>
+          {done} of {total} {total === 1 ? 'round' : 'rounds'}
+        </Text>
       </View>
 
-      <View style={d.stepperRow}>
-        <Stepper
-          size="large"
-          label="SETS LEFT"
-          value={state.setsLeft}
-          min={0}
-          max={99}
-          onChange={v => onUpdate({ setsLeft: v })}
-          fillRow={false}
-        />
-      </View>
-
-      <View>
-        {(exercise.subExercises ?? []).map((sub, idx) => {
-          const nm = sub.name === 'Other' ? (sub.customName || `Exercise ${idx+1}`) : (sub.name || `Exercise ${idx+1}`);
-          return (
-            <View key={sub.id ?? idx} style={d.subCard}>
-              <Text style={d.subName}>{nm}</Text>
+      {(exercise.subExercises ?? []).map((sub, idx) => {
+        const nm = sub.name === 'Other'
+          ? (sub.customName || `Exercise ${idx + 1}`)
+          : (sub.name || `Exercise ${idx + 1}`);
+        const w = state.subWeights?.[idx] ?? 0;
+        return (
+          <View key={sub.id ?? idx} style={d.subCard}>
+            <View style={d.subHead}>
+              <Text style={d.subName} numberOfLines={1}>{nm}</Text>
               {sub.bodySection ? <Text style={d.subSection}>{sub.bodySection}</Text> : null}
-              <View style={d.stepperRow}>
-                <Stepper size="large" label="WEIGHT (kg)"
-                  value={state.subWeights[idx] ?? 0} min={0} max={500}
-                  onChange={v => { const sw=[...state.subWeights]; sw[idx]=v; onUpdate({subWeights:sw}); }} />
+            </View>
+            <View style={d.subRow}>
+              <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0 }}>
+                <Stepper size="large" label="WEIGHT (kg)" step={2.5}
+                  value={w} min={0} max={500}
+                  onChange={v => { const sw = [...state.subWeights]; sw[idx] = v; onUpdate({ subWeights: sw }); }} />
+                <Text style={d.subShadow}>{lbLabel(w)}</Text>
+              </View>
+              <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0 }}>
                 <Stepper size="large" label="REPS"
-                  value={state.subReps[idx] ?? 1} min={1} max={999}
-                  onChange={v => { const sr=[...state.subReps]; sr[idx]=v; onUpdate({subReps:sr}); }} />
+                  value={state.subReps?.[idx] ?? 1} min={1} max={999}
+                  onChange={v => { const sr = [...state.subReps]; sr[idx] = v; onUpdate({ subReps: sr }); }} />
               </View>
             </View>
-          );
-        })}
-      </View>
-
-      {done ? (
-        <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Combo Complete!</Text></View>
-      ) : !started ? (
-        <TouchableOpacity style={[d.actionBtn, d.startBtn]} onPress={onSetStart} activeOpacity={0.8}>
-          <Icon name="play" size={IconSize.row} color={Colors.background} />
-          <Text style={d.actionTxt}>START SET</Text>
-        </TouchableOpacity>
-      ) : (
-        <>
-          <View style={d.elapsedRow}>
-            <Icon name="timer" size={IconSize.meta} color={Colors.amber} />
-            <Text style={d.elapsedTxt}>Set in progress · {formatTime(setElapsed)}</Text>
           </View>
-          <TouchableOpacity style={d.actionBtn} onPress={onSetDone} activeOpacity={0.8}>
-            <Icon name="combo" size={IconSize.row} color={Colors.background} />
-            <Text style={d.actionTxt}>COMBO SET DONE</Text>
-          </TouchableOpacity>
-        </>
-      )}
-      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={d.backTxt}>Back to exercises</Text>
-      </TouchableOpacity>
+        );
+      })}
+
+      <View style={d.adjustRow}>
+        <Text style={d.adjustLabel}>ROUNDS LEFT</Text>
+        <Stepper value={state.setsLeft} min={0} max={99}
+                 onChange={v => onUpdate({ setsLeft: v })} fillRow={false} />
+      </View>
     </View>
   );
 }
 
 // ─── Warmup detail ────────────────────────────────────────────────────────────
-function WarmupDetail({ exercise, state, onToggle, onBack }) {
+function WarmupDetail({ exercise, state, onToggle }) {
   const done = state.status === 'complete';
   return (
     <View style={d.container}>
-      <View style={d.titleRow}>
-        <Icon name="warmup" size={IconSize.section} color={Colors.warn} />
-        <Text style={d.name}>Warmup</Text>
-      </View>
-      <Text style={d.subtitle}>{exercise.warmupType}</Text>
 
       <View style={wu.block}>
         <Text style={wu.timer}>{formatTime(state.timeLeft)}</Text>
         <Text style={wu.label}>{done ? 'DONE' : state.isRunning ? 'RUNNING' : 'PAUSED'}</Text>
       </View>
-
-      {!done &&
-        <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
-          onPress={onToggle} activeOpacity={0.8}>
-          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
-          <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : 'START'}</Text>
-        </TouchableOpacity>
-      }
       {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Warmup Complete!</Text></View>}
-
-      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={d.backTxt}>Back to exercises</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 const wu = StyleSheet.create({
   block: { alignItems: 'center', marginVertical: Spacing.xl },
-  timer: { fontFamily: DIGITAL_FONT, fontSize: 72, color: Colors.amber, letterSpacing: 4 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginTop: Spacing.sm },
+  timer: { ...Typography.timerHero, color: Colors.warn },
+  label: { ...Typography.label, color: Colors.textMuted, marginTop: Spacing.sm },
 });
 
 // ─── Intervals detail ─────────────────────────────────────────────────────────
-function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
+function IntervalsDetail({ exercise, state, onToggle, onUpdateReps }) {
   const done     = state.status === 'complete';
   const notStart = state.phase === null;
   const pColor   = state.phase ? PHASE_COLOR[state.phase] : Colors.textMuted;
@@ -393,10 +315,6 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
 
   return (
     <View style={d.container}>
-      <View style={d.titleRow}>
-        <Icon name="intervals" size={IconSize.section} color={Colors.ember} />
-        <Text style={d.name}>Intervals</Text>
-      </View>
 
       <View style={iv.repsRow}>
         <Text style={iv.repsLabel}>REPS REMAINING</Text>
@@ -434,34 +352,21 @@ function IntervalsDetail({ exercise, state, onToggle, onUpdateReps, onBack }) {
           />
         </View>
       </View>
-
-      {!done &&
-        <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
-          onPress={onToggle} activeOpacity={0.8}>
-          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
-          <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : notStart ? 'START' : 'RESUME'}</Text>
-        </TouchableOpacity>
-      }
       {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>Intervals Complete!</Text></View>}
-
-      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={d.backTxt}>Back to exercises</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 const iv = StyleSheet.create({
   repsRow:       { alignItems: 'center', marginBottom: Spacing.xl },
-  repsLabel:     { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.sm },
+  repsLabel:     { ...Typography.label, color: Colors.textMuted, marginBottom: Spacing.sm },
   phaseBox:      { alignItems: 'center', borderWidth: 2, borderRadius: Radius.lg, padding: Spacing.xl, marginBottom: Spacing.xl },
   phaseLabel:    { ...Typography.h2, marginBottom: Spacing.sm },
-  timer:         { fontFamily: DIGITAL_FONT, fontSize: 64, letterSpacing: 4 },
+  timer:         { ...Typography.timerLarge },
   totalTimer:    { ...Typography.bodySmall, color: Colors.textMuted, marginTop: Spacing.sm, letterSpacing: 0.5 },
   progressTrack: {
     alignSelf: 'stretch',
     height: 8,
-    backgroundColor: Colors.surfaceRaised,
+    backgroundColor: Colors.raised,
     borderRadius: 4,
     marginTop: Spacing.md,
     overflow: 'hidden',
@@ -472,7 +377,7 @@ const iv = StyleSheet.create({
 // ─── Cardio (Treadmill / Stairs) detail ────────────────────────────────────────
 // A single background-resilient countdown (no phase cycling), modeled on
 // WarmupDetail, with a progress bar and live-adjustable speed/incline.
-function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, onBack }) {
+function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline }) {
   const isTreadmill = state.cardioType === CARDIO_TYPES.TREADMILL;
   const label = isTreadmill ? 'Treadmill' : 'Stairs';
   const icon  = isTreadmill ? 'treadmill' : 'stairs';
@@ -490,13 +395,13 @@ function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, o
         <Text style={d.name}>{label}</Text>
       </View>
 
-      <View style={[iv.phaseBox, { borderColor: Colors.primary }]}>
-        <Text style={[iv.phaseLabel, { color: Colors.primary }]}>
+      <View style={[iv.phaseBox, { borderColor: Colors.ember }]}>
+        <Text style={[iv.phaseLabel, { color: Colors.ember }]}>
           {done ? 'DONE' : state.isRunning ? 'RUNNING' : notStart ? 'READY' : 'PAUSED'}
         </Text>
-        <Text style={[iv.timer, { color: Colors.primary }]}>{formatTime(state.timeLeft)}</Text>
+        <Text style={[iv.timer, { color: Colors.ember }]}>{formatTime(state.timeLeft)}</Text>
         <View style={iv.progressTrack} onLayout={e => setTrackW(e.nativeEvent.layout.width)}>
-          <View style={[iv.progressFill, { width: trackW * progress, backgroundColor: Colors.primary }]} />
+          <View style={[iv.progressFill, { width: trackW * progress, backgroundColor: Colors.ember }]} />
         </View>
       </View>
 
@@ -508,53 +413,42 @@ function CardioLengthDetail({ state, onToggle, onUpdateSpeed, onUpdateIncline, o
             onChange={onUpdateIncline} />
         )}
       </View>
-
-      {!done &&
-        <TouchableOpacity style={[d.actionBtn, state.isRunning && {backgroundColor: Colors.amber}]}
-          onPress={onToggle} activeOpacity={0.8}>
-          <Icon name={state.isRunning ? 'pause' : 'play'} size={IconSize.row} color={Colors.background} />
-          <Text style={d.actionTxt}>{state.isRunning ? 'PAUSE' : notStart ? 'START' : 'RESUME'}</Text>
-        </TouchableOpacity>
-      }
       {done && <View style={d.doneBadge}><Icon name="statusComplete" size={IconSize.pip} color={Colors.gold} /><Text style={d.doneText}>{label} Complete!</Text></View>}
-
-      <TouchableOpacity style={d.backBtn} onPress={onBack} activeOpacity={0.7}>
-        <Icon name="back" size={IconSize.meta} color={Colors.textSecondary} />
-        <Text style={d.backTxt}>Back to exercises</Text>
-      </TouchableOpacity>
     </View>
   );
 }
 
 // ─── Shared detail styles ─────────────────────────────────────────────────────
+// The Sheet draws the name, the body part and the close affordance, and the
+// footer bar draws the action — so these are the styles for the middle only.
 const d = StyleSheet.create({
-  container: { flex: 1, padding: Spacing.lg, gap: Spacing.md },
-  name:      { ...Typography.h1, color: Colors.textPrimary },
-  titleRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  subtitle:  { ...Typography.body, color: Colors.textSecondary, marginTop: -Spacing.sm },
-  heroStepperRow:{ flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.lg },
-  stepperRow:{ flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md, justifyContent: 'center' },
-  actionBtn: { height: 64, borderRadius: Radius.lg, backgroundColor: Colors.primary,
-               flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-               gap: Spacing.sm, ...Shadows.orange },
-  // START SET is a lighter ember than the solid-orange SET DONE, so the two
-  // states of the same button are told apart at a glance mid-workout.
-  startBtn:  { backgroundColor: Colors.primaryLight },
-  actionTxt: { ...Typography.h2, color: Colors.background, fontWeight: '800' },
-  elapsedRow:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-               gap: Spacing.xs, paddingVertical: Spacing.xs },
-  elapsedTxt:{ ...Typography.body, color: Colors.amber },
-  doneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-               gap: Spacing.md, padding: Spacing.lg },
-  doneText:  { ...Typography.h2, color: Colors.gold },
-  backBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-               gap: Spacing.xs, paddingVertical: Spacing.md },
-  backTxt:   { ...Typography.body, color: Colors.textSecondary },
-  subScroll: { maxHeight: 280 },
-  subCard:   { backgroundColor: Colors.surfaceNested, borderRadius: Radius.md,
-               padding: Spacing.md, marginBottom: Spacing.sm, gap: Spacing.sm },
-  subName:   { ...Typography.h3, color: Colors.textPrimary },
-  subSection:{ ...Typography.bodySmall, color: Colors.amber },
+  body:        { padding: Spacing.lg, gap: Spacing.xl },
+
+  progress:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressTxt: { ...Typography.label, color: Colors.textMuted },
+
+  adjustRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                 borderTopWidth: 1, borderTopColor: Colors.line, paddingTop: Spacing.lg },
+  adjustLabel: { ...Typography.label, color: Colors.textFaint },
+
+  subCard:     { backgroundColor: Colors.surface, borderRadius: Radius.md,
+                 borderWidth: 1, borderColor: Colors.line,
+                 padding: Spacing.md, gap: Spacing.sm },
+  subHead:     { gap: 2 },
+  subName:     { ...Typography.h3, color: Colors.text },
+  subSection:  { ...Typography.bodySmall, color: Colors.textMuted },
+  subRow:      { flexDirection: 'row', gap: Spacing.sm },
+  subShadow:   { ...Typography.caption, color: Colors.textFaint, textAlign: 'center', marginTop: 2 },
+
+  // Still used by the warmup / intervals / cardio detail bodies.
+  container:   { padding: Spacing.lg, gap: Spacing.md },
+  name:        { ...Typography.h1, color: Colors.text },
+  titleRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  subtitle:    { ...Typography.body, color: Colors.textMuted },
+  stepperRow:  { flexDirection: 'row', gap: Spacing.sm, marginVertical: Spacing.md, justifyContent: 'center' },
+  doneBadge:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                 gap: Spacing.md, padding: Spacing.lg },
+  doneText:    { ...Typography.h2, color: Colors.gold },
 });
 
 // ─── Body section + exercise picker, with free-text "Other" entry ─────────────
@@ -667,9 +561,9 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   const hasExercises = exercises.length > 0;
 
   const typeOptions = [
-    !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'warmup', label: 'Warmup', color: Colors.amber },
-    { key: EXERCISE_TYPES.REGULAR, icon: 'barbell', label: 'Exercise', color: Colors.primary },
-    { key: EXERCISE_TYPES.COMBO,   icon: 'combo', label: 'Combo', color: Colors.blue },
+    !hasWarmup && !hasExercises && { key: EXERCISE_TYPES.WARMUP, icon: 'warmup', label: 'Warmup', color: Colors.warn },
+    { key: EXERCISE_TYPES.REGULAR, icon: 'barbell', label: 'Exercise', color: Colors.ember },
+    { key: EXERCISE_TYPES.COMBO,   icon: 'combo', label: 'Combo', color: Colors.ice },
     !hasCardio && { key: EXERCISE_TYPES.INTERVALS, icon: 'intervals',  label: 'Cardio', color: Colors.gold },
   ].filter(Boolean);
 
@@ -703,7 +597,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
         {/* Header */}
         <View style={qam.header}>
           <TouchableOpacity onPress={step === 'form' ? () => setStep('type') : onClose} style={qam.backBtn}>
-            <Icon name={step === 'form' ? 'back' : 'close'} size={IconSize.row} color={Colors.textPrimary} />
+            <Icon name={step === 'form' ? 'back' : 'close'} size={IconSize.row} color={Colors.text} />
           </TouchableOpacity>
           <Text style={qam.title}>{step === 'type' ? 'Add Exercise' : type}</Text>
           <View style={{ width: 40 }} />
@@ -773,7 +667,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
                 </View>
               ))}
               <TouchableOpacity style={qam.addSubBtn} onPress={addComboSub} activeOpacity={0.8}>
-                <Icon name="add" size={IconSize.meta} color={Colors.primary} />
+                <Icon name="add" size={IconSize.meta} color={Colors.ember} />
                 <Text style={qam.addSubBtnTxt}>Add Exercise to Combo</Text>
               </TouchableOpacity>
             </>
@@ -823,7 +717,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
               activeOpacity={0.8}
               disabled={!isFormValid}
             >
-              <Icon name="check" size={IconSize.row} color={Colors.background} />
+              <Icon name="check" size={IconSize.row} color={Colors.base} />
               <Text style={qam.confirmTxt}>Add to Session</Text>
             </TouchableOpacity>
           )}
@@ -835,31 +729,31 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
 const qam = StyleSheet.create({
   overlay:     { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000A', justifyContent: 'flex-end', zIndex: 999 },
   sheet:       { backgroundColor: Colors.surface, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, maxHeight: '85%' },
-  header:      { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  header:      { flexDirection: 'row', alignItems: 'center', padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.line },
   backBtn:     { width: 40 },
-  title:       { ...Typography.h2, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
-  typeCard:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 1 },
+  title:       { ...Typography.h2, color: Colors.text, flex: 1, textAlign: 'center' },
+  typeCard:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.raised, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 1 },
   typeLabel:   { ...Typography.h3, fontWeight: '700' },
-  fieldLabel:  { ...Typography.label, color: Colors.textSecondary },
+  fieldLabel:  { ...Typography.label, color: Colors.textMuted },
   chipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  chip:        { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.surfaceRaised },
-  chipActive:  { backgroundColor: Colors.primary },
-  chipTxt:     { ...Typography.bodySmall, color: Colors.textSecondary },
-  chipActiveTxt:{ color: Colors.background, fontWeight: '700' },
+  chip:        { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.raised },
+  chipActive:  { backgroundColor: Colors.ember },
+  chipTxt:     { ...Typography.bodySmall, color: Colors.textMuted },
+  chipActiveTxt:{ color: Colors.base, fontWeight: '700' },
   stepperRow:  { flexDirection: 'row', gap: Spacing.sm },
-  timerHint:   { ...Typography.timerMedium, color: Colors.amber, alignSelf: 'flex-end', fontFamily: DIGITAL_FONT, letterSpacing: 2, paddingBottom: 4 },
+  timerHint:   { ...Typography.timerInline, color: Colors.warn, alignSelf: 'flex-end', paddingBottom: 4 },
   helpTxt:     { ...Typography.bodySmall, color: Colors.textMuted, fontStyle: 'italic' },
-  textInput:   { height: 44, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised,
-                 paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.textPrimary },
-  subCard:     { gap: Spacing.sm, backgroundColor: Colors.surfaceNested, borderRadius: Radius.lg,
+  textInput:   { height: 44, borderRadius: Radius.md, backgroundColor: Colors.raised,
+                 paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.text },
+  subCard:     { gap: Spacing.sm, backgroundColor: Colors.nested, borderRadius: Radius.lg,
                  padding: Spacing.md },
   subCardHeader:{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  subCardTitle:{ ...Typography.label, color: Colors.textSecondary },
+  subCardTitle:{ ...Typography.label, color: Colors.textMuted },
   addSubBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs,
-                 height: 44, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.primary + '55' },
-  addSubBtnTxt:{ ...Typography.bodySmall, color: Colors.primary, fontWeight: '600' },
-  confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
-  confirmTxt:  { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+                 height: 44, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.ember + '55' },
+  addSubBtnTxt:{ ...Typography.bodySmall, color: Colors.ember, fontWeight: '600' },
+  confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.ember, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
+  confirmTxt:  { ...Typography.h3, color: Colors.base, fontWeight: '700' },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -903,34 +797,13 @@ export default function TrainingScreen({ navigation, route }) {
   const cardioLengthNotifRef = useRef(null);
 
   // Rest timer
+  // Ticks only while a set is actually running, so the screen is not
+  // re-rendering once a second for the other 95% of a session.
+  const [setNow, setSetNow] = useState(Date.now());
+
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
   const [restActive, setRestActive]   = useState(false);
   const restEndTimeRef                = useRef(null); // absolute ms timestamp rest is due to end
-
-  // Animated glow for rest timer
-  const restGlow = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (restActive) {
-      const anim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(restGlow, { toValue: 1, duration: 700, useNativeDriver: false }),
-          Animated.timing(restGlow, { toValue: 0, duration: 700, useNativeDriver: false }),
-        ])
-      );
-      anim.start();
-      return () => anim.stop();
-    } else {
-      Animated.timing(restGlow, { toValue: 0, duration: 300, useNativeDriver: false }).start();
-    }
-  }, [restActive]);
-
-  const restBorderColor = restGlow.interpolate({
-    inputRange: [0, 1],
-    outputRange: [Colors.border, Colors.blue],
-  });
-
-  // Dynamic header height
-  const [headerH, setHeaderH] = useState(88);
 
   // Navigation state
   const [selectedId, setSelectedId] = useState(null);
@@ -998,6 +871,18 @@ export default function TrainingScreen({ navigation, route }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [startTime]);
+
+  // ─── Set-in-progress tick ────────────────────────────────────────────────
+  // Seeded on start, not on mount: the footer used to compute elapsed against
+  // a timestamp captured when the detail first rendered, which is EARLIER than
+  // setStartedAt, and showed a negative time until the first tick landed.
+  const runningSetAt = selectedId ? exStates[selectedId]?.setStartedAt : null;
+  useEffect(() => {
+    if (!runningSetAt) return;
+    setSetNow(Date.now());
+    const id = setInterval(() => setSetNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [runningSetAt]);
 
   // ─── Rest timer ──────────────────────────────────────────────────────────
   const restTick = useCallback(() => {
@@ -1311,7 +1196,10 @@ export default function TrainingScreen({ navigation, route }) {
       const setsLeft      = st.setsLeft - 1;
       const setsCompleted = st.setsCompleted + 1;
       const status        = setsLeft === 0 ? 'complete' : 'partial';
-      if (setsLeft === 0) setTimeout(() => setSelectedId(null), 400);
+      // §7.2: pressing SET DONE transitions the screen straight into the
+      // rest state, so the sheet closes whether or not sets remain. Staying
+      // open would hide the countdown behind the thing you just finished.
+      setTimeout(() => setSelectedId(null), 260);
       const ex = (session?.exercises ?? []).find(e => e.id === id);
       const durationSecs = st.setStartedAt
         ? Math.round((Date.now() - st.setStartedAt) / 1000)
@@ -1343,234 +1231,318 @@ export default function TrainingScreen({ navigation, route }) {
     activateRest();
   }, [activateRest, session, addEvent]);
 
+  // ─── Exercise glyphs ──────────────────────────────────────────────────────
+  // Body part where there is one, equipment where there is not.
+  const exIcon = (ex) => {
+    if (!ex) return 'barbell';
+    if (ex.type === EXERCISE_TYPES.WARMUP) return 'warmup';
+    if (ex.type === EXERCISE_TYPES.INTERVALS) {
+      const t = getCardioType(ex);
+      return t === CARDIO_TYPES.TREADMILL ? 'treadmill'
+           : t === CARDIO_TYPES.STAIRS    ? 'stairs' : 'intervals';
+    }
+    if (ex.type === EXERCISE_TYPES.COMBO) return 'combo';
+    return SECTION_ICON[ex.bodySection] ?? 'barbell';
+  };
+
+  // ─── Timer toggles ────────────────────────────────────────────────────────
+  // Named rather than inlined, because the fixed footer bar and the sheet body
+  // both need to drive them now.
+  const toggleWarmup = useCallback((id, ex) => setExStates(prev => {
+    const st = prev[id];
+    const starting = !st.isRunning;
+    if (starting) {
+      warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
+      addEvent('warmup_start', { exerciseName: ex?.warmupType, durationSecs: st.timeLeft });
+      scheduleTimerNotification(st.timeLeft, 'Warmup complete — session started!', 'beep_rest.wav')
+        .then(nid => { warmupNotifRef.current = nid; });
+    } else {
+      cancelTimerNotification(warmupNotifRef.current);
+      warmupNotifRef.current = null;
+    }
+    return { ...prev, [id]: { ...st, isRunning: starting } };
+  }), [addEvent]);
+
+  const toggleIntervals = useCallback((id) => setExStates(prev => {
+    const st = prev[id];
+    const starting = !st.isRunning && st.phase === null;
+    const willRun  = !st.isRunning;
+    if (starting) addToPerfOrder(id);
+    const newTimeLeft = starting ? st.walkDuration : st.timeLeft;
+    if (willRun) {
+      intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
+      scheduleTimerNotification(newTimeLeft, 'Intervals — start running!', 'beep_interval.wav')
+        .then(nid => { intervalsNotifRef.current = nid; });
+    } else {
+      cancelTimerNotification(intervalsNotifRef.current);
+      intervalsNotifRef.current = null;
+    }
+    return { ...prev, [id]: {
+      ...st, isRunning: willRun,
+      status:   starting ? 'partial'     : st.status,
+      phase:    starting ? PHASE.WALKING : st.phase,
+      timeLeft: newTimeLeft,
+    }};
+  }), [addToPerfOrder]);
+
+  const toggleCardio = useCallback((id, ex) => setExStates(prev => {
+    const st = prev[id];
+    const starting = st.status === 'pending';
+    const willRun  = !st.isRunning;
+    if (starting) addToPerfOrder(id);
+    if (willRun) {
+      cardioLengthEndRef.current = Date.now() + st.timeLeft * 1000;
+      const label = st.cardioType === CARDIO_TYPES.TREADMILL ? 'Treadmill' : 'Stairs';
+      addEvent('cardio_length_start', {
+        cardioType: st.cardioType, exerciseName: getExerciseName(ex), durationSecs: st.timeLeft,
+      });
+      scheduleTimerNotification(st.timeLeft, label + ' complete!', 'beep_rest.wav')
+        .then(nid => { cardioLengthNotifRef.current = nid; });
+    } else {
+      cancelTimerNotification(cardioLengthNotifRef.current);
+      cardioLengthNotifRef.current = null;
+    }
+    return { ...prev, [id]: { ...st, isRunning: willRun, status: starting ? 'partial' : st.status } };
+  }), [addEvent, addToPerfOrder]);
+
   // ─── Render ───────────────────────────────────────────────────────────────
   const exercises     = session?.exercises ?? [];
   const selectedEx    = selectedId ? exercises.find(e => e.id === selectedId) : null;
   const selectedState = selectedId ? exStates[selectedId] : null;
-  const contentH      = windowHeight - headerH;
+
+  const patch = (props) =>
+    setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...props } }));
+
+  // While rest is lit, ember goes cold everywhere else — §2.2 allows exactly
+  // one live channel at a time, and during rest that channel is ice.
+  const live = restActive ? Colors.textMuted : Colors.ember;
+
+  // What to name on the rest hero. The exercise you were just on, if it still
+  // has sets left — otherwise the next one that is not finished.
+  const lastWorked = perfOrder.length
+    ? exercises.find(e => e.id === perfOrder[perfOrder.length - 1])
+    : null;
+  const lastWorkedLeft = lastWorked && exStates[lastWorked.id]?.status !== 'complete';
+  const nextEx = lastWorkedLeft
+    ? lastWorked
+    : exercises.find(e => exStates[e.id]?.status !== 'complete');
+  const nextSt = nextEx ? exStates[nextEx.id] : null;
+
+  // ─── The fixed action bar at the foot of the sheet (§7.2) ─────────────────
+  const renderSheetFooter = () => {
+    if (!selectedEx || !selectedState) return null;
+    const type = selectedEx.type;
+
+    const Bar = ({ onPress, icon, label, tone = Colors.ember, sub }) => (
+      <TouchableOpacity style={[styles.setBar, { backgroundColor: tone }]}
+                        onPress={onPress} activeOpacity={0.85}
+                        accessibilityRole="button" accessibilityLabel={label}>
+        <Icon name={icon} size={IconSize.tab} color={onAccent} />
+        <View>
+          <Text style={styles.setBarTxt}>{label}</Text>
+          {sub ? <Text style={styles.setBarSub}>{sub}</Text> : null}
+        </View>
+      </TouchableOpacity>
+    );
+
+    const DoneBar = ({ label }) => (
+      <View style={[styles.setBar, styles.setBarDone]}>
+        <Icon name="statusComplete" size={IconSize.tab} color={Colors.gold} />
+        <Text style={[styles.setBarTxt, { color: Colors.gold }]}>{label}</Text>
+      </View>
+    );
+
+    if (type === EXERCISE_TYPES.REGULAR || type === EXERCISE_TYPES.COMBO) {
+      const isCombo = type === EXERCISE_TYPES.COMBO;
+      if (selectedState.setsLeft === 0)
+        return <DoneBar label={isCombo ? 'COMBO COMPLETE' : 'ALL SETS DONE'} />;
+      if (selectedState.setStartedAt == null)
+        return <Bar onPress={() => handleSetStart(selectedId)} icon="play"
+                    label={isCombo ? 'START ROUND' : 'START SET'} />;
+      const elapsed = Math.max(0, Math.floor((setNow - selectedState.setStartedAt) / 1000));
+      return <Bar onPress={() => handleSetDone(selectedId)} icon="check"
+                  label={isCombo ? 'ROUND DONE' : 'SET DONE'}
+                  sub={'under load ' + formatTime(elapsed)} />;
+    }
+
+    if (selectedState.status === 'complete') return <DoneBar label="COMPLETE" />;
+
+    const running = selectedState.isRunning;
+    const started = selectedState.phase != null || selectedState.status === 'partial';
+    const toggle =
+      type === EXERCISE_TYPES.WARMUP ? () => toggleWarmup(selectedId, selectedEx)
+      : getCardioType(selectedEx) === CARDIO_TYPES.INTERVALS ? () => toggleIntervals(selectedId)
+      : () => toggleCardio(selectedId, selectedEx);
+
+    return <Bar onPress={toggle} icon={running ? 'pause' : 'play'}
+                label={running ? 'PAUSE' : started ? 'RESUME' : 'START'}
+                tone={running ? Colors.warn : Colors.ember} />;
+  };
 
   return (
     <View style={[styles.container, { height: windowHeight }]}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.base} />
 
       {/* ── Header ─────────────────────────────────────────────────── */}
-      <View
-        style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}
-        onLayout={e => setHeaderH(e.nativeEvent.layout.height)}
-      >
-        {/* Session name */}
-        <Text style={styles.sessionName} numberOfLines={1}>{session?.name ?? 'Training'}</Text>
-
-        {/* Timer row */}
-        <View style={styles.timerRow}>
-          {/* Session timer */}
-          <View style={styles.timerBox}>
-            <Text style={styles.timerLabel}>SESSION</Text>
-            <Text style={[styles.timerDigits, { color: Colors.primary }]}>
-              {formatTime(elapsedSec)}
-            </Text>
-          </View>
-
-          {/* End button */}
-          <TouchableOpacity style={styles.endBtn} onPress={confirmEnd} activeOpacity={0.8}>
-            <Text style={styles.endBtnTxt}>END</Text>
-          </TouchableOpacity>
-
-          {/* Rest timer — animated border when active */}
-          <Animated.View style={[styles.timerBox, styles.restBox, { borderColor: restBorderColor }]}>
-            <Text style={styles.timerLabel}>REST</Text>
-            <Text style={[styles.timerDigits, { color: restActive ? Colors.blue : Colors.textMuted }]}>
-              {formatTime(restSec)}
-            </Text>
-          </Animated.View>
+      {/* The rest readout has left this bar entirely — it is the hero below
+          now. What remains is what you glance at, not what you read. */}
+      <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={styles.sessionName} numberOfLines={1}>{session?.name ?? 'Training'}</Text>
+          <Text style={styles.elapsed}>{formatTime(elapsedSec)}</Text>
         </View>
+        <TouchableOpacity style={styles.endBtn} onPress={confirmEnd} activeOpacity={0.8}
+                          accessibilityRole="button">
+          <Text style={styles.endBtnTxt}>END</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.divider} />
 
-      {/* ── Content ────────────────────────────────────────────────── */}
-      <View style={{ height: contentH - 1 }}>
-        {!selectedEx ? (
-          /* Exercise list */
-          <>
-            <FlatList
-              data={exercises}
-              keyExtractor={item => item.id}
-              style={{ flex: 1, minHeight: 0 }}
-              contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xl }]}
-              renderItem={({ item }) => {
-              const st = exStates[item.id];
-              return (
-                <TouchableOpacity
-                  style={[styles.exRow, st?.status === 'complete' && styles.exRowDone]}
-                  onPress={() => selectExercise(item.id)}
-                  activeOpacity={0.75}
-                >
-                  <StatusDot status={st?.status ?? 'pending'} />
-                  <View style={styles.exInfo}>
-                    <Text style={styles.exName}>{getExerciseName(item)}</Text>
-                    {getExerciseBodyPart(item) ? (
-                      <Text style={styles.exBodyPart}>{getExerciseBodyPart(item)}</Text>
-                    ) : null}
-                    <Text style={styles.exMeta}>{getExerciseMeta(item, st)}</Text>
-                  </View>
-                  <Icon name="forward" size={IconSize.meta} color={Colors.textMuted} />
-                </TouchableOpacity>
-              );
-            }}
-          />
-          {/* Ad-hoc Quick Add button */}
-          {adHoc && (
-            <TouchableOpacity
-              style={styles.quickAddFab}
-              onPress={() => setShowQuickAdd(true)}
-              activeOpacity={0.85}
-            >
-              <Icon name="add" size={IconSize.tab} color={Colors.background} />
-              <Text style={styles.quickAddTxt}>Add Exercise</Text>
-            </TouchableOpacity>
-          )}
-          </>
-        ) : (
-          /* Exercise detail */
-          <ScrollView
-            style={{ flex: 1, minHeight: 0 }}
-            contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + Spacing.lg }}
-          >
-            {selectedEx.type === EXERCISE_TYPES.REGULAR && (
-              <RegularDetail exercise={selectedEx} state={selectedState}
-                onUpdate={p => setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...p } }))}
-                onSetStart={() => handleSetStart(selectedId)}
-                onSetDone={() => handleSetDone(selectedId)}
-                onBack={() => goBack(selectedId)} />
-            )}
-            {selectedEx.type === EXERCISE_TYPES.COMBO && (
-              <ComboDetail exercise={selectedEx} state={selectedState}
-                onUpdate={p => setExStates(prev => ({ ...prev, [selectedId]: { ...prev[selectedId], ...p } }))}
-                onSetStart={() => handleSetStart(selectedId)}
-                onSetDone={() => handleSetDone(selectedId)}
-                onBack={() => goBack(selectedId)} />
-            )}
-            {selectedEx.type === EXERCISE_TYPES.WARMUP && (
-              <WarmupDetail exercise={selectedEx} state={selectedState}
-                onToggle={() => setExStates(prev => {
-                  const st = prev[selectedId];
-                  const starting = !st.isRunning;
-                  if (starting) {
-                    warmupEndTimeRef.current = Date.now() + st.timeLeft * 1000;
-                    addEvent('warmup_start', { exerciseName: selectedEx?.warmupType, durationSecs: st.timeLeft });
-                    scheduleTimerNotification(st.timeLeft, 'Warmup complete — session started! 🔥', 'beep_rest.wav')
-                      .then(id => { warmupNotifRef.current = id; });
-                  } else {
-                    cancelTimerNotification(warmupNotifRef.current);
-                    warmupNotifRef.current = null;
-                  }
-                  return { ...prev, [selectedId]: { ...st, isRunning: starting } };
-                })}
-                onBack={() => goBack(selectedId)} />
-            )}
-            {selectedEx.type === EXERCISE_TYPES.INTERVALS && cardioSubtype === CARDIO_TYPES.INTERVALS && (
-              <IntervalsDetail exercise={selectedEx} state={selectedState}
-                onToggle={() => setExStates(prev => {
-                  const st = prev[selectedId];
-                  const starting = !st.isRunning && st.phase === null;
-                  const willRun = !st.isRunning;
-                  if (starting) addToPerfOrder(selectedId);
-                  const newTimeLeft = starting ? st.walkDuration : st.timeLeft;
-                  if (willRun) {
-                    intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
-                    scheduleTimerNotification(newTimeLeft, 'Intervals — Start running! 🏃', 'beep_interval.wav')
-                      .then(id => { intervalsNotifRef.current = id; });
-                  } else {
-                    cancelTimerNotification(intervalsNotifRef.current);
-                    intervalsNotifRef.current = null;
-                  }
-                  return { ...prev, [selectedId]: {
-                    ...st, isRunning: willRun,
-                    status:   starting ? 'partial'        : st.status,
-                    phase:    starting ? PHASE.WALKING    : st.phase,
-                    timeLeft: newTimeLeft,
-                  }};
-                })}
-                onUpdateReps={v => setExStates(prev => ({
-                  ...prev, [selectedId]: { ...prev[selectedId], repsLeft: Math.max(0, v) }
-                }))}
-                onBack={() => goBack(selectedId)} />
-            )}
-            {selectedEx.type === EXERCISE_TYPES.INTERVALS && cardioSubtype !== CARDIO_TYPES.INTERVALS && (
-              <CardioLengthDetail state={selectedState}
-                onToggle={() => setExStates(prev => {
-                  const st = prev[selectedId];
-                  const starting = st.status === 'pending';
-                  const willRun = !st.isRunning;
-                  if (starting) addToPerfOrder(selectedId);
-                  if (willRun) {
-                    cardioLengthEndRef.current = Date.now() + st.timeLeft * 1000;
-                    const label = cardioSubtype === CARDIO_TYPES.TREADMILL ? 'Treadmill' : 'Stairs';
-                    addEvent('cardio_length_start', { cardioType: cardioSubtype, exerciseName: getExerciseName(selectedEx), durationSecs: st.timeLeft });
-                    scheduleTimerNotification(st.timeLeft, `${label} complete! 🏁`, 'beep_rest.wav')
-                      .then(id => { cardioLengthNotifRef.current = id; });
-                  } else {
-                    cancelTimerNotification(cardioLengthNotifRef.current);
-                    cardioLengthNotifRef.current = null;
-                  }
-                  return { ...prev, [selectedId]: { ...st, isRunning: willRun, status: starting ? 'partial' : st.status } };
-                })}
-                onUpdateSpeed={v => setExStates(prev => ({
-                  ...prev, [selectedId]: { ...prev[selectedId], speedKmh: Math.max(0, v) }
-                }))}
-                onUpdateIncline={v => setExStates(prev => ({
-                  ...prev, [selectedId]: { ...prev[selectedId], inclinePct: Math.max(0, v) }
-                }))}
-                onBack={() => goBack(selectedId)} />
-            )}
-          </ScrollView>
-        )}
-      </View>
-
-      {/* ── End Session Confirmation ────────────────────────────────── */}
-      {showEndConfirm && (
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmBox}>
-            <Text style={styles.confirmTitle}>End Session?</Text>
-            <Text style={styles.confirmMsg}>
-              Save this session to your stats, or discard it — handy for testing or demoing without affecting your history.
-            </Text>
-            <TouchableOpacity
-              style={styles.confirmCancelBtn}
-              onPress={() => setShowEndConfirm(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.confirmCancelTxt}>Keep Training</Text>
-            </TouchableOpacity>
-            <View style={styles.confirmBtns}>
-              <TouchableOpacity
-                style={styles.confirmDiscardBtn}
-                onPress={() => { setShowEndConfirm(false); doEndSession(false); }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmDiscardTxt}>Discard</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmEndBtn}
-                onPress={() => { setShowEndConfirm(false); doEndSession(true); }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.confirmEndTxt}>Save & End</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      {/* ── Rest hero — state (b) ──────────────────────────────────── */}
+      {restActive && (
+        <RestHero
+          secsLeft={restSec}
+          totalSecs={session?.restTimerSecs ?? 60}
+          nextLabel={nextEx ? getExerciseName(nextEx) : null}
+          nextSub={nextEx && nextSt ? getExerciseMeta(nextEx, nextSt) : null}
+          nextIcon={nextEx ? exIcon(nextEx) : null}
+          onSkip={stopRest}
+        />
       )}
 
-      {/* ── Quick Add Exercise (ad-hoc mode) ───────────────────────── */}
+      {/* ── Exercise rail — state (a) ──────────────────────────────── */}
+      <FlatList
+        data={exercises}
+        keyExtractor={item => item.id}
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + Spacing.xxl }]}
+        ListEmptyComponent={
+          <EmptyState
+            icon="emptySessions"
+            title="Nothing planned yet"
+            message={adHoc
+              ? 'Add your first exercise and it starts counting.'
+              : 'This session has no exercises.'}
+          />
+        }
+        renderItem={({ item }) => {
+          const st   = exStates[item.id];
+          const done = st?.status === 'complete';
+          const sets = item.sets ?? 0;
+          const made = Math.max(0, sets - (st?.setsLeft ?? 0));
+          return (
+            <TouchableOpacity
+              style={[styles.exRow, done && styles.exRowDone]}
+              onPress={() => selectExercise(item.id)}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+            >
+              <Icon name={exIcon(item)} size={IconSize.row}
+                    color={done ? Colors.gold : st?.status === 'partial' ? live : Colors.textMuted} />
+
+              <View style={styles.exInfo}>
+                <Text style={styles.exName} numberOfLines={1}>{getExerciseName(item)}</Text>
+                <Text style={styles.exMeta} numberOfLines={1}>{getExerciseMeta(item, st)}</Text>
+              </View>
+
+              {/* The pips are the whole point of the row: how many left,
+                  without opening anything (§7.2a). */}
+              <View style={styles.exRight}>
+                {done ? (
+                  <Icon name="statusComplete" size={IconSize.meta} color={Colors.gold} />
+                ) : sets ? (
+                  <>
+                    <SetPips total={sets} done={made} tone={live} />
+                    <Text style={styles.exCount}>{made} of {sets}</Text>
+                  </>
+                ) : (
+                  <Icon name={st?.status === 'partial' ? 'statusPartial' : 'chevronRight'}
+                        size={IconSize.meta}
+                        color={st?.status === 'partial' ? Colors.warn : Colors.textMuted} />
+                )}
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+      />
+
+      {/* Ad-hoc Quick Add */}
+      {adHoc && !restActive && (
+        <TouchableOpacity
+          style={[styles.quickAddFab, { marginBottom: insets.bottom + Spacing.md }]}
+          onPress={() => setShowQuickAdd(true)}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+        >
+          <Icon name="add" size={IconSize.tab} color={onAccent} />
+          <Text style={styles.quickAddTxt}>Add Exercise</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* ── Set detail — state (c), a sheet over the dimmed list ────── */}
+      <Sheet
+        visible={!!selectedEx}
+        onClose={() => goBack(selectedId)}
+        title={selectedEx ? getExerciseName(selectedEx) : ''}
+        subtitle={selectedEx ? (getExerciseBodyPart(selectedEx) || undefined) : undefined}
+        icon={selectedEx ? exIcon(selectedEx) : undefined}
+        iconColor={Colors.ember}
+        footer={renderSheetFooter()}
+      >
+        <ScrollView
+          contentContainerStyle={styles.sheetScroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {selectedEx && selectedState && (
+            <>
+              {selectedEx.type === EXERCISE_TYPES.REGULAR && (
+                <RegularDetail exercise={selectedEx} state={selectedState} onUpdate={patch} />
+              )}
+              {selectedEx.type === EXERCISE_TYPES.COMBO && (
+                <ComboDetail exercise={selectedEx} state={selectedState} onUpdate={patch} />
+              )}
+              {selectedEx.type === EXERCISE_TYPES.WARMUP && (
+                <WarmupDetail exercise={selectedEx} state={selectedState}
+                  onToggle={() => toggleWarmup(selectedId, selectedEx)} />
+              )}
+              {selectedEx.type === EXERCISE_TYPES.INTERVALS
+                && getCardioType(selectedEx) === CARDIO_TYPES.INTERVALS && (
+                <IntervalsDetail exercise={selectedEx} state={selectedState}
+                  onToggle={() => toggleIntervals(selectedId)}
+                  onUpdateReps={v => patch({ repsLeft: Math.max(0, v) })} />
+              )}
+              {selectedEx.type === EXERCISE_TYPES.INTERVALS
+                && getCardioType(selectedEx) !== CARDIO_TYPES.INTERVALS && (
+                <CardioLengthDetail state={selectedState}
+                  onToggle={() => toggleCardio(selectedId, selectedEx)}
+                  onUpdateSpeed={v => patch({ speedKmh: Math.max(0, v) })}
+                  onUpdateIncline={v => patch({ inclinePct: Math.max(0, v) })} />
+              )}
+            </>
+          )}
+        </ScrollView>
+      </Sheet>
+
+      {/* ── End session ────────────────────────────────────────────── */}
+      <ConfirmDialog
+        visible={showEndConfirm}
+        onDismiss={() => setShowEndConfirm(false)}
+        icon="statusPartial"
+        title="End session?"
+        message="Save it to your stats, or discard it — handy for testing without touching your history."
+        dismissLabel="Keep training"
+        actions={[
+          { label: 'Discard',    tone: 'danger',  onPress: () => { setShowEndConfirm(false); doEndSession(false); } },
+          { label: 'Save & end', tone: 'primary', onPress: () => { setShowEndConfirm(false); doEndSession(true); } },
+        ]}
+      />
+
+      {/* ── Quick Add (ad-hoc mode) ────────────────────────────────── */}
       {showQuickAdd && (
         <QuickAddModal
           exercises={exercises}
-          onAdd={(ex) => {
-            setAdHocExercises(prev => [...prev, ex]);
-            setShowQuickAdd(false);
-          }}
+          onAdd={(ex) => { setAdHocExercises(prev => [...prev, ex]); setShowQuickAdd(false); }}
           onClose={() => setShowQuickAdd(false)}
         />
       )}
@@ -1580,69 +1552,55 @@ export default function TrainingScreen({ navigation, route }) {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container:   { backgroundColor: Colors.background },
-  header:      { paddingHorizontal: Spacing.md, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  sessionName: { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center', marginBottom: Spacing.xs },
-  timerRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  timerBox:    { flex: 1, alignItems: 'center' },
-  restBox:     { borderWidth: 1.5, borderRadius: Radius.md, paddingVertical: Spacing.xs },
-  timerLabel:  { ...Typography.label, color: Colors.textMuted, fontSize: 11, marginBottom: 1 },
-  timerDigits: { fontFamily: DIGITAL_FONT, fontSize: 34, letterSpacing: 2 },
-  endBtn:      { backgroundColor: Colors.danger, paddingHorizontal: Spacing.lg,
-                 paddingVertical: Spacing.sm, borderRadius: Radius.full },
-  endBtnTxt:   { ...Typography.label, color: Colors.textPrimary, fontSize: 14 },
-  divider:     { height: 1, backgroundColor: Colors.border },
-  listContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.sm },
-  exRow:       { backgroundColor: Colors.surface, borderRadius: Radius.lg,
-                 borderWidth: 1, borderColor: Colors.border,
-                 flexDirection: 'row', alignItems: 'center',
-                 paddingHorizontal: Spacing.md, paddingVertical: Spacing.md, gap: Spacing.md },
-  exRowDone:   { borderColor: Colors.gold + '55' },
-  exInfo:      { flex: 1 },
-  exName:      { ...Typography.h3, color: Colors.textPrimary },
-  exBodyPart:  { ...Typography.bodySmall, color: Colors.amber, marginTop: 2 },
-  exMeta:      { ...Typography.bodySmall, color: Colors.textSecondary, marginTop: 2 },
+  container: { backgroundColor: Colors.base },
 
-  // End session confirmation overlay
-  confirmOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: '#000000CC',
-    alignItems: 'center', justifyContent: 'center',
-    zIndex: 999,
+  header: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm,
   },
-  confirmBox: {
+  sessionName: { ...Typography.bodySmall, color: Colors.textMuted },
+  // Session elapsed is a glance, not a read — inline size, and it is the only
+  // seven-segment face left in the header now that rest has its own hero.
+  elapsed:     { ...Typography.timerInline, color: Colors.text },
+  endBtn: {
+    paddingHorizontal: Spacing.lg, height: Touch.min,
+    alignItems: 'center', justifyContent: 'center',
+    borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.danger,
+  },
+  endBtnTxt: { ...Typography.label, color: Colors.danger, fontSize: 13 },
+  divider:   { height: 1, backgroundColor: Colors.line },
+
+  listContent: { padding: Spacing.md, gap: Spacing.sm },
+  exRow: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
-    padding: Spacing.xl, margin: Spacing.xl, gap: Spacing.md,
-    borderWidth: 1, borderColor: Colors.border,
-    ...Shadows.card,
+    borderWidth: 1, borderColor: Colors.line,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
+    gap: Spacing.md, minHeight: Touch.gym,
   },
-  confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
-  confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
-  confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
-  confirmCancelBtn: {
-    height: 48, borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceRaised,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  confirmCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
-  confirmDiscardBtn: {
-    flex: 1, height: 48, borderRadius: Radius.md,
-    backgroundColor: 'transparent', borderWidth: 1.5, borderColor: Colors.danger,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  confirmDiscardTxt: { ...Typography.h3, color: Colors.danger, fontWeight: '700' },
-  confirmEndBtn: {
-    flex: 1, height: 48, borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  confirmEndTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  exRowDone: { borderColor: Colors.goldDim, backgroundColor: Colors.base },
+  exInfo:    { flex: 1, minWidth: 0, gap: 2 },
+  exName:    { ...Typography.h3, color: Colors.text },
+  exMeta:    { ...Typography.bodySmall, color: Colors.textMuted },
+  exRight:   { alignItems: 'flex-end', gap: Spacing.xs },
+  exCount:   { ...Typography.caption, color: Colors.textFaint, fontVariant: ['tabular-nums'] },
 
-  // Ad-hoc Quick Add FAB
+  sheetScroll: { paddingBottom: Spacing.xl },
+
+  // The fixed action bar (§7.2) — full width, 72px, never scrolls away.
+  setBar: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.md, height: 72,
+  },
+  setBarTxt:  { ...Typography.h2, color: onAccent, letterSpacing: 0.5 },
+  setBarSub:  { ...Typography.caption, color: onAccent, opacity: 0.8 },
+  setBarDone: { backgroundColor: Colors.base, borderTopWidth: 1, borderTopColor: Colors.goldDim },
+
   quickAddFab: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: Spacing.sm, backgroundColor: Colors.primary,
-    margin: Spacing.md, height: 52, borderRadius: Radius.full, ...Shadows.orange,
+    gap: Spacing.sm, backgroundColor: Colors.ember,
+    marginHorizontal: Spacing.md, height: Touch.gym,
+    borderRadius: Radius.full, ...Elevation.glowEmber,
   },
-  quickAddTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  quickAddTxt: { ...Typography.h3, color: onAccent },
 });

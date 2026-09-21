@@ -306,6 +306,124 @@ export function deriveSession(session) {
 
 export const deriveAll = (sessions) => (sessions ?? []).map(deriveSession);
 
+/**
+ * A just-finished local session -> the shape `deriveSession` consumes.
+ *
+ * The summary screen runs the instant training ends — before the Supabase
+ * round trip has necessarily landed, and at all if the phone is offline in a
+ * basement gym. So it cannot read its own numbers back from the server.
+ *
+ * Mapping the local summary onto the shared shape means the tonnage and the
+ * time-under-load it prints are computed by the SAME code that computes the
+ * dashboard's. The alternative — a second arithmetic implementation on the
+ * summary screen — is exactly how the old build ended up quoting two different
+ * volumes for one session.
+ *
+ * The row mapping mirrors utils/syncWorkout.js deliberately: if these two ever
+ * disagree, the summary and the history of the same session disagree.
+ */
+export function sessionFromSummary(summary) {
+  if (!summary) return null;
+  const rows = [];
+
+  (summary.exercises ?? []).forEach((ex, idx) => {
+    const order = ex.performanceOrder ?? idx;
+    const base = {
+      id: ex.id, parent_id: null,
+      exercise_type: ex.type, exercise_name: ex.name,
+      body_section: ex.bodySection ?? null,
+      status: ex.status, perf_order: order,
+    };
+
+    if (ex.type === 'regular') {
+      rows.push({ ...base,
+        weight_kg: ex.weight ?? null, reps: ex.reps ?? null,
+        sets_planned: ex.plannedSets ?? null, sets_completed: ex.completedSets ?? null });
+      return;
+    }
+
+    if (ex.type === 'combo') {
+      rows.push({ ...base,
+        sets_planned: ex.plannedSets ?? null, sets_completed: ex.completedSets ?? null });
+      // Children are real lifting rows, which is what makes a combo count
+      // toward tonnage at all — see the parent_id migration in §5.2.
+      (ex.subExercises ?? []).forEach((sub, i) => rows.push({
+        id: `${ex.id}:${i}`, parent_id: ex.id,
+        exercise_type: 'regular', exercise_name: sub.name,
+        body_section: sub.bodySection ?? null, status: ex.status,
+        weight_kg: sub.weight ?? null, reps: sub.reps ?? null,
+        sets_planned: ex.plannedSets ?? null, sets_completed: ex.completedSets ?? null,
+        perf_order: order * 100 + i + 1,
+      }));
+      return;
+    }
+
+    if (ex.type === 'warmup') {
+      rows.push({ ...base, duration_secs: ex.plannedDurationSecs ?? null });
+      return;
+    }
+
+    if (ex.type === 'intervals') {
+      const cardioType = ex.cardioType ?? 'intervals';
+      rows.push(cardioType === 'intervals'
+        ? { ...base, cardio_type: cardioType,
+            intervals_planned: ex.plannedReps ?? null,
+            intervals_done: ex.completedReps ?? null,
+            interval_len_secs: ex.intervalLengthSecs ?? null }
+        : { ...base, cardio_type: cardioType,
+            duration_secs: ex.completedDurationSecs ?? ex.plannedDurationSecs ?? null,
+            speed_kmh: ex.speedKmh ?? null,
+            incline_pct: cardioType === 'treadmill' ? (ex.inclinePct ?? null) : null });
+    }
+  });
+
+  return shapeSessions([{
+    id:            summary.sessionId ?? 'local',
+    name:          summary.sessionName ?? 'Session',
+    started_at:    summary.startTime ?? new Date().toISOString(),
+    duration_secs: summary.totalDurationSecs ?? 0,
+    timeline:      summary.timeline ?? [],
+    workout_exercises: rows,
+  }])[0];
+}
+
+/**
+ * Personal records set by `session`, judged against everything before it.
+ *
+ * A PR is a higher estimated 1RM for a named exercise than that exercise has
+ * ever reached. e1RM rather than raw weight, so 100 kg x 5 correctly beats
+ * 105 kg x 1 — the alternative rewards dropping reps, which is not progress.
+ *
+ * `history` is every OTHER derived session; the caller filters this one out by
+ * id so a session cannot set a record against itself.
+ */
+export function computeSessionPRs(session, history) {
+  const best = new Map();
+  for (const h of history ?? []) {
+    for (const b of h.bestSets ?? []) {
+      if (b.e1rm == null) continue;
+      const prev = best.get(b.exercise);
+      if (!prev || b.e1rm > prev.e1rm) best.set(b.exercise, { e1rm: b.e1rm, dayKey: h.dayKey });
+    }
+  }
+
+  const prs = [];
+  for (const b of session?.bestSets ?? []) {
+    if (b.e1rm == null) continue;
+    const prev = best.get(b.exercise);
+    if (!prev) {
+      // First time on record counts, but it is labelled differently: there is
+      // no "+2.5 since" to quote when there is nothing to compare against.
+      prs.push({ ...b, gain: null, sinceDay: null, first: true });
+    } else if (b.e1rm > prev.e1rm) {
+      prs.push({ ...b, gain: Math.round((b.e1rm - prev.e1rm) * 10) / 10,
+                 sinceDay: prev.dayKey, first: false });
+    }
+  }
+  return prs.sort((a, b) => (b.gain ?? Infinity) - (a.gain ?? Infinity));
+}
+
+
 // ─── Headline tiles ───────────────────────────────────────────────────────────
 
 const sumBy = (rows, f) => rows.reduce((a, r) => a + (f(r) || 0), 0);

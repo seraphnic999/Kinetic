@@ -106,7 +106,7 @@ export default function YouScreen() {
 
         <Text style={s.section}>Training defaults</Text>
         <View style={s.card}>
-          <Row icon="rest" label="Rest timer" value={`${prefs.restTimerSecs}s between sets`}>
+          <Row icon="timer" label="Rest timer" value={`${prefs.restTimerSecs}s between sets`}>
             <Stepper
               value={prefs.restTimerSecs}
               onChange={v => update('restTimerSecs', v)}
@@ -116,7 +116,7 @@ export default function YouScreen() {
               fillRow={false}
             />
           </Row>
-          <Row icon="cardio" label="Sounds" value="Beep on rest and interval changes">
+          <Row icon="intervals" label="Sounds" value="Beep on rest and interval changes">
             <Switch
               value={prefs.sounds}
               onValueChange={v => update('sounds', v)}

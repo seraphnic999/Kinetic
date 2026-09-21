@@ -70,5 +70,24 @@ other `empty*`, and the whole 10-glyph account family first time.
 
 ## All 100 accounted for
 
-`ICON-LIST.txt` and the generated `Icon.js` agree: 99 installed, nothing extra,
-`statusComplete` the only gap.
+`Icon.js` carries 100 glyphs, nothing extra. `statusComplete` was the last gap
+and is now authored by hand (`mktick.py`) rather than generated, because the
+source used three `<mask>` elements and the generator cannot fold a mask into a
+single path.
+
+---
+
+## Wrong glyph chosen, not wrongly drawn
+
+Found by walking the v12 build on the emulator. These are usage errors in the
+screens — the glyphs themselves are fine and are still correct elsewhere.
+
+| Screen | Row | Was | Now | Why |
+|---|---|---|---|---|
+| You | Rest timer | `rest` | `timer` | `rest` is a clock with a bar across it; at `IconSize.meta` the bar reads as the slash of a no-entry sign |
+| You | Sounds | `cardio` | `intervals` | `cardio` is a heart with an ECG trace through it, so the row read as heart rate. `intervals` is a square wave, which reads as audio |
+
+Worth noting for the rest of the set: both mistakes were mine picking a glyph by
+its name rather than by what it looks like at the size it is drawn. The glyph
+inventory is large enough now that the usage map in DESIGN.md §4 is the thing to
+check against, not the glyph name.

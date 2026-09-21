@@ -1,4 +1,16 @@
-import React, { useState } from 'react';
+/**
+ * Summary — what the session was worth, in the order you care about it.
+ *
+ * §7.3. The old screen opened with duration, a completed-count and a start
+ * time: three facts you already knew, because you had just lived through them.
+ * What it never told you was how much you actually moved, and whether anything
+ * you did was a personal best — both computable from data the app already had,
+ * and neither of them shown anywhere.
+ *
+ * So: three numbers, then the gold PR callouts, then the detail. PRs are
+ * computed here and nowhere else pays for it.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, TextInput,
   ScrollView, StatusBar, useWindowDimensions, Platform, Alert, KeyboardAvoidingView,
@@ -6,12 +18,21 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize } from '../theme';
+import {
+  Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent, SCRIM,
+} from '../theme';
 import { Icon } from '../components/Icon';
+import { EmptyState } from '../components/States';
 import { formatTime } from '../utils/time';
 import { EXERCISE_TYPES, CARDIO_TYPES } from '../data/exercises';
 import { generateTrainingCsv } from '../utils/generateCsv';
 import { upsertSession, generateId } from '../utils/storage';
+import { supabase } from '../config/supabase';
+import { lbLabel } from '../utils/units';
+import {
+  sessionFromSummary, deriveSession, deriveAll, shapeSessions,
+  computeSessionPRs, fmtTonnes, fmtDur, dayLabel, SESSION_LIMIT,
+} from '../utils/analytics';
 
 const STATUS_ICON = {
   complete: { name: 'statusComplete', color: Colors.gold },
@@ -20,135 +41,155 @@ const STATUS_ICON = {
   skipped:  { name: 'statusSkipped',  color: Colors.textMuted },
 };
 
+// ─── Detail row ───────────────────────────────────────────────────────────────
 function ExerciseRow({ ex, index }) {
   const icon = STATUS_ICON[ex.status] ?? STATUS_ICON.skipped;
   return (
-    <View style={rowStyles.card}>
-      <View style={rowStyles.header}>
-        <View style={rowStyles.orderBadge}>
-          <Text style={rowStyles.orderNum}>{index + 1}</Text>
-        </View>
+    <View style={r.card}>
+      <View style={r.head}>
+        <Text style={r.order}>{index + 1}</Text>
         <Icon name={icon.name} size={IconSize.meta} color={icon.color} />
-        <Text style={rowStyles.name} numberOfLines={1}>{ex.name}</Text>
+        <Text style={r.name} numberOfLines={1}>{ex.name}</Text>
       </View>
 
       {ex.type === EXERCISE_TYPES.REGULAR && (
-        <View style={rowStyles.stats}>
-          <StatPill label="Sets" value={`${ex.completedSets}/${ex.plannedSets}`} />
-          <StatPill label="Weight" value={`${ex.weight}kg`} />
-          <StatPill label="Reps" value={String(ex.reps)} />
+        <View style={r.pills}>
+          <Pill label="Sets"   value={`${ex.completedSets}/${ex.plannedSets}`} />
+          <Pill label="Weight" value={`${ex.weight} kg`} shadow={ex.weight} />
+          <Pill label="Reps"   value={String(ex.reps)} />
         </View>
       )}
 
       {ex.type === EXERCISE_TYPES.COMBO && (
         <>
-          <View style={rowStyles.stats}>
-            <StatPill label="Sets" value={`${ex.completedSets}/${ex.plannedSets}`} />
+          <View style={r.pills}>
+            <Pill label="Rounds" value={`${ex.completedSets}/${ex.plannedSets}`} />
           </View>
           {ex.subExercises?.map((sub, i) => (
-            <View key={i} style={rowStyles.subRow}>
-              <Text style={rowStyles.subName}>{sub.name}</Text>
-              <Text style={rowStyles.subStats}>{sub.weight}kg × {sub.reps} reps</Text>
+            <View key={i} style={r.subRow}>
+              <Text style={r.subName} numberOfLines={1}>{sub.name}</Text>
+              <Text style={r.subStats}>{sub.weight} kg × {sub.reps}</Text>
             </View>
           ))}
         </>
       )}
 
       {ex.type === EXERCISE_TYPES.WARMUP && (
-        <View style={rowStyles.stats}>
-          <StatPill label="Type" value={ex.warmupType} />
-          <StatPill label="Duration" value={formatTime(ex.plannedDurationSecs ?? 0)} />
+        <View style={r.pills}>
+          <Pill label="Type"     value={ex.warmupType} />
+          <Pill label="Duration" value={formatTime(ex.plannedDurationSecs ?? 0)} />
         </View>
       )}
 
-      {ex.type === EXERCISE_TYPES.INTERVALS && (ex.cardioType ?? CARDIO_TYPES.INTERVALS) === CARDIO_TYPES.INTERVALS && (
-        <View style={rowStyles.stats}>
-          <StatPill label="Completed" value={`${ex.completedReps}/${ex.plannedReps} reps`} />
-          <StatPill label="Interval" value={`${ex.intervalLengthSecs}s`} />
+      {ex.type === EXERCISE_TYPES.INTERVALS
+        && (ex.cardioType ?? CARDIO_TYPES.INTERVALS) === CARDIO_TYPES.INTERVALS && (
+        <View style={r.pills}>
+          <Pill label="Reps"     value={`${ex.completedReps}/${ex.plannedReps}`} />
+          <Pill label="Interval" value={`${ex.intervalLengthSecs}s`} />
         </View>
       )}
 
       {ex.type === EXERCISE_TYPES.INTERVALS && ex.cardioType === CARDIO_TYPES.TREADMILL && (
-        <View style={rowStyles.stats}>
-          <StatPill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
-          <StatPill label="Speed" value={`${ex.speedKmh}km/h`} />
-          <StatPill label="Incline" value={`${ex.inclinePct ?? 0}%`} />
+        <View style={r.pills}>
+          <Pill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
+          <Pill label="Speed"    value={`${ex.speedKmh} km/h`} />
+          <Pill label="Incline"  value={`${ex.inclinePct ?? 0}%`} />
         </View>
       )}
 
       {ex.type === EXERCISE_TYPES.INTERVALS && ex.cardioType === CARDIO_TYPES.STAIRS && (
-        <View style={rowStyles.stats}>
-          <StatPill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
-          <StatPill label="Speed" value={`${ex.speedKmh}km/h`} />
+        <View style={r.pills}>
+          <Pill label="Duration" value={formatTime(ex.completedDurationSecs ?? ex.plannedDurationSecs ?? 0)} />
+          <Pill label="Speed"    value={`${ex.speedKmh} km/h`} />
         </View>
       )}
     </View>
   );
 }
 
-function StatPill({ label, value }) {
+function Pill({ label, value, shadow }) {
   return (
-    <View style={pillStyles.pill}>
-      <Text style={pillStyles.label}>{label}</Text>
-      <Text style={pillStyles.value}>{value}</Text>
+    <View style={r.pill}>
+      <Text style={r.pillLabel}>{label}</Text>
+      <Text style={r.pillValue}>{value}</Text>
+      {/* A per-exercise weight is exactly the figure §3.5 wants a pound
+          reading beside — you might run this session on a foreign rack. */}
+      {shadow > 0 ? <Text style={r.pillShadow}>{lbLabel(shadow)}</Text> : null}
     </View>
   );
 }
 
-const pillStyles = StyleSheet.create({
-  pill: {
-    backgroundColor: Colors.surfaceRaised,
-    borderRadius: Radius.md, paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs,
-    alignItems: 'center', minWidth: 64,
-  },
-  label: { ...Typography.caption, color: Colors.textMuted },
-  value: { ...Typography.h3, color: Colors.textPrimary, marginTop: 2 },
-});
-
-const rowStyles = StyleSheet.create({
-  card: {
-    backgroundColor: Colors.surface, borderRadius: Radius.lg,
-    borderWidth: 1, borderColor: Colors.border,
-    padding: Spacing.md, gap: Spacing.sm,
-  },
-  header:     { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  orderBadge: {
-    width: 24, height: 24, borderRadius: 12,
-    backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center',
-  },
-  orderNum: { ...Typography.caption, color: Colors.textSecondary, fontWeight: '700' },
-  name:     { ...Typography.h3, color: Colors.textPrimary, flex: 1 },
-  stats:    { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
-  subRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2 },
-  subName:  { ...Typography.body, color: Colors.textSecondary },
-  subStats: { ...Typography.body, color: Colors.textPrimary },
-});
+function Tile({ value, label, sub, tone, icon }) {
+  return (
+    <View style={s.tile}>
+      {icon ? <Icon name={icon} size={IconSize.meta} color={tone} /> : null}
+      <Text style={[s.tileValue, { color: tone }]} numberOfLines={1}>{value}</Text>
+      <Text style={s.tileLabel}>{label}</Text>
+      {sub ? <Text style={s.tileSub} numberOfLines={2}>{sub}</Text> : null}
+    </View>
+  );
+}
 
 export default function SummaryScreen({ navigation, route }) {
   const { height: windowHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { summary, reusableSession } = route.params ?? {};
 
+  const [downloading, setDownloading]           = useState(false);
+  const [showSaveModal, setShowSaveModal]       = useState(false);
+  const [sessionNameInput, setSessionNameInput] = useState(reusableSession?.suggestedName ?? '');
+  const [savingSession, setSavingSession]       = useState(false);
+  const [sessionSaved, setSessionSaved]         = useState(false);
+  const [prs, setPrs] = useState(null);   // null = still looking · [] = none
+
+  // This session's own numbers, from the shared engine rather than a second
+  // arithmetic implementation living on this screen. The old build had two,
+  // which is how it managed to quote two different volumes for one session.
+  const derived   = summary ? deriveSession(sessionFromSummary(summary)) : null;
+  const derivedId = derived?.id;
+  const derivedAt = derived?.startedAt;
+
+  // PRs need history, and history needs the network. Best effort: a session
+  // that cannot reach Supabase still shows its volume and time under load, and
+  // simply says nothing about records rather than claiming there were none.
+  const loadPRs = useCallback(async () => {
+    if (!derivedId) return;
+    try {
+      const { data } = await supabase.from('workout_sessions').select(`
+          id, name, started_at, duration_secs, timeline,
+          workout_exercises (
+            id, parent_id, exercise_type, exercise_name, body_section, status,
+            weight_kg, sets_planned, sets_completed, reps, duration_secs,
+            perf_order, cardio_type, speed_kmh, incline_pct
+          )
+        `).order('started_at', { ascending: false }).limit(SESSION_LIMIT);
+      if (!data) { setPrs([]); return; }
+      // Exclude this session however it got there — once the sync lands it is
+      // in the history too, and it must not set a record against itself.
+      const history = deriveAll(shapeSessions(data))
+        .filter(d => d.id !== derivedId && d.startedAt !== derivedAt);
+      setPrs(computeSessionPRs(derived, history));
+    } catch (e) {
+      console.warn('[Summary] PR lookup failed:', e?.message ?? e);
+      setPrs([]);
+    }
+  }, [derivedId, derivedAt]);
+
+  useEffect(() => { loadPRs(); }, [loadPRs]);
+
   if (!summary) {
     return (
-      <View style={[styles.container, { height: windowHeight, alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ color: Colors.textSecondary }}>No summary data</Text>
-        <TouchableOpacity onPress={() => navigation.popToTop()}>
-          <Text style={{ color: Colors.primary, marginTop: Spacing.md }}>Go Home</Text>
-        </TouchableOpacity>
+      <View style={[s.container, { height: windowHeight, justifyContent: 'center' }]}>
+        <EmptyState
+          icon="emptyHistory"
+          title="Nothing to summarise"
+          message="This screen opens at the end of a session."
+          actionLabel="Back to training"
+          onAction={() => navigation.popToTop()}
+        />
       </View>
     );
   }
-
-  const completedCount = summary.exercises.filter(e => e.status === 'complete').length;
-  const totalCount     = summary.exercises.length;
-  const startDate      = new Date(summary.startTime);
-
-  const [downloading, setDownloading] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [sessionNameInput, setSessionNameInput] = useState(reusableSession?.suggestedName ?? '');
-  const [savingSession, setSavingSession] = useState(false);
-  const [sessionSaved, setSessionSaved] = useState(false);
 
   const saveAsSession = async () => {
     const name = sessionNameInput.trim();
@@ -175,10 +216,8 @@ export default function SummaryScreen({ navigation, route }) {
     setDownloading(true);
     try {
       const csv = generateTrainingCsv(summary);
-      const safeName = (summary.sessionName ?? 'training')
-        .replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const dateStr = new Date(summary.startTime ?? Date.now())
-        .toISOString().slice(0, 10);
+      const safeName = (summary.sessionName ?? 'training').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const dateStr  = new Date(summary.startTime ?? Date.now()).toISOString().slice(0, 10);
       const filename = `kinetic_${safeName}_${dateStr}.csv`;
 
       if (Platform.OS === 'web') {
@@ -204,136 +243,144 @@ export default function SummaryScreen({ navigation, route }) {
     }
   };
 
+  const discarded = summary.saved === false;
+  const prCount   = prs?.length ?? 0;
+
   return (
-    <View style={[styles.container, { height: windowHeight }]}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+    <View style={[s.container, { height: windowHeight }]}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.base} />
 
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
-        <Icon name="trophy" size={IconSize.empty} color={Colors.gold} />
-        <Text style={styles.title}>Session Complete</Text>
-        <Text style={styles.sessionName}>{summary.sessionName}</Text>
-        {summary.saved === false && (
-          <View style={styles.discardedBadge}>
-            <Icon name="eyeOff" size={IconSize.meta} color={Colors.textMuted} />
-            <Text style={styles.discardedBadgeTxt}>Not saved to your stats</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Stats bar */}
-      <View style={styles.statsBar}>
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{formatTime(summary.totalDurationSecs)}</Text>
-          <Text style={styles.statLabel}>DURATION</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>{completedCount}/{totalCount}</Text>
-          <Text style={styles.statLabel}>COMPLETED</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statCell}>
-          <Text style={styles.statValue}>
-            {startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </Text>
-          <Text style={styles.statLabel}>STARTED</Text>
-        </View>
-      </View>
-
-      {/* Exercise list */}
       <ScrollView
         style={{ flex: 1, minHeight: 0 }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[s.scroll, { paddingTop: insets.top + Spacing.lg }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.sectionLabel}>EXERCISES</Text>
+        {/* ── Banked ─────────────────────────────────────────────────── */}
+        <View style={s.hero}>
+          <Icon name={discarded ? 'eyeOff' : 'statusComplete'} size={IconSize.empty}
+                color={discarded ? Colors.textMuted : Colors.gold} />
+          <Text style={[s.heroTitle, discarded && { color: Colors.textMuted }]}>
+            {discarded ? 'SESSION DISCARDED' : 'SESSION BANKED'}
+          </Text>
+          <Text style={s.heroSub}>
+            {summary.sessionName} · {fmtDur(summary.totalDurationSecs)}
+          </Text>
+          {discarded ? <Text style={s.heroNote}>Not saved to your stats.</Text> : null}
+        </View>
+
+        {/* ── The three numbers that matter ──────────────────────────── */}
+        <View style={s.tiles}>
+          <Tile value={fmtTonnes(derived.volumeKg)} label="VOLUME" tone={Colors.text} />
+          <Tile
+            value={derived.workSecs != null ? fmtDur(derived.workSecs) : '—'}
+            label="UNDER LOAD"
+            sub={derived.density != null
+              ? `${Math.round(derived.density * 100)}% of session`
+              : 'no timed sets'}
+            tone={Colors.text}
+          />
+          <Tile
+            value={prs == null ? '·' : String(prCount)}
+            label={prCount === 1 ? 'PR' : 'PRS'}
+            icon={prCount > 0 ? 'trophy' : null}
+            tone={prCount > 0 ? Colors.gold : Colors.textMuted}
+          />
+        </View>
+
+        {/* ── PR callouts ────────────────────────────────────────────── */}
+        {prCount > 0 && (
+          <>
+            <Text style={s.section}>Personal records</Text>
+            {prs.map((p, i) => (
+              <View key={`${p.exercise}-${i}`} style={s.prRow}>
+                <Icon name="trophy" size={IconSize.row} color={Colors.gold} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={s.prName} numberOfLines={1}>{p.exercise}</Text>
+                  <Text style={s.prSet}>{p.weightKg} kg × {p.reps}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={s.prE1rm}>{p.e1rm} kg</Text>
+                  <Text style={s.prShadow}>{lbLabel(p.e1rm)}</Text>
+                  <Text style={s.prGain}>
+                    {p.first ? 'first on record' : `+${p.gain} since ${dayLabel(p.sinceDay)}`}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </>
+        )}
+
+        {/* ── Detail ─────────────────────────────────────────────────── */}
+        <Text style={s.section}>Exercises</Text>
         {summary.exercises.map((ex, idx) => (
           <ExerciseRow key={ex.id} ex={ex} index={idx} />
         ))}
-
-        {/* JSON export block (ready for future backend) */}
-        <View style={styles.jsonNote}>
-          <Icon name="cloudSynced" size={IconSize.meta} color={Colors.textMuted} />
-          <Text style={styles.jsonNoteText}>Summary ready for sync — backend coming soon</Text>
-        </View>
       </ScrollView>
 
-      {/* Footer */}
-      <View style={[styles.footerWrap, { paddingBottom: Math.max(insets.bottom, Spacing.lg) }]}>
-        {reusableSession && (
-          <TouchableOpacity
-            style={[styles.saveSessionBtn, sessionSaved && styles.saveSessionBtnDone]}
-            onPress={() => setShowSaveModal(true)}
-            activeOpacity={0.8}
-            disabled={sessionSaved}
-          >
-            <Icon name={sessionSaved ? 'statusComplete' : 'save'} size={IconSize.meta} color={sessionSaved ? Colors.gold : Colors.blue} />
-            <Text style={[styles.saveSessionBtnTxt, sessionSaved && { color: Colors.gold }]}>
-              {sessionSaved ? 'Saved as Session' : 'Save as Session'}
-            </Text>
-          </TouchableOpacity>
-        )}
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.csvBtn}
-            onPress={downloadCsv}
-            activeOpacity={0.8}
-            disabled={downloading}
-          >
+      {/* ── Footer ───────────────────────────────────────────────────── */}
+      <View style={[s.footerWrap, { paddingBottom: Math.max(insets.bottom, Spacing.md) }]}>
+        <View style={s.footerRow}>
+          {reusableSession && (
+            <TouchableOpacity
+              style={[s.ghostBtn, sessionSaved && { borderColor: Colors.gold }]}
+              onPress={() => setShowSaveModal(true)}
+              activeOpacity={0.8}
+              disabled={sessionSaved}
+              accessibilityRole="button"
+            >
+              <Icon name={sessionSaved ? 'statusComplete' : 'save'} size={IconSize.meta}
+                    color={sessionSaved ? Colors.gold : Colors.ice} />
+              <Text style={[s.ghostTxt, { color: sessionSaved ? Colors.gold : Colors.ice }]}>
+                {sessionSaved ? 'Saved' : 'Save as template'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={s.ghostBtn} onPress={downloadCsv}
+                            activeOpacity={0.8} disabled={downloading}
+                            accessibilityRole="button">
             {downloading
-              ? <ActivityIndicator size="small" color={Colors.primary} />
-              : <Icon name="export" size={IconSize.meta} color={Colors.primary} />
-            }
-            <Text style={styles.csvBtnTxt}>Download CSV</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.homeBtn}
-            onPress={() => navigation.popToTop()}
-            activeOpacity={0.8}
-          >
-            <Icon name="tabTrain" size={IconSize.row} color={Colors.background} />
-            <Text style={styles.homeBtnTxt}>Back to Home</Text>
+              ? <ActivityIndicator size="small" color={Colors.ember} />
+              : <Icon name="export" size={IconSize.meta} color={Colors.ember} />}
+            <Text style={[s.ghostTxt, { color: Colors.ember }]}>Export CSV</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={s.doneBtn} onPress={() => navigation.popToTop()}
+                          activeOpacity={0.85} accessibilityRole="button">
+          <Text style={s.doneTxt}>DONE</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Save-as-Session name prompt */}
+      {/* ── Save-as-template prompt ──────────────────────────────────── */}
       {showSaveModal && (
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitle}>Save as Session</Text>
-            <Text style={styles.modalMsg}>Give this session a name so you can reuse it later.</Text>
+        <KeyboardAvoidingView style={s.modalScrim}
+                              behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={s.modalBox}>
+            <Text style={s.modalTitle}>Save as template</Text>
+            <Text style={s.modalMsg}>Name it and it joins your session list, ready to run again.</Text>
             <TextInput
-              style={styles.modalInput}
+              style={s.modalInput}
               value={sessionNameInput}
               onChangeText={setSessionNameInput}
               placeholder="Session name"
-              placeholderTextColor={Colors.textMuted}
+              placeholderTextColor={Colors.textFaint}
               autoFocus
               selectTextOnFocus
             />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setShowSaveModal(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.modalCancelTxt}>Cancel</Text>
+            <View style={s.modalBtns}>
+              <TouchableOpacity style={s.modalCancel} onPress={() => setShowSaveModal(false)}
+                                activeOpacity={0.8}>
+                <Text style={s.modalCancelTxt}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalSaveBtn, (!sessionNameInput.trim() || savingSession) && { opacity: 0.5 }]}
+                style={[s.modalSave, (!sessionNameInput.trim() || savingSession) && { opacity: 0.5 }]}
                 onPress={saveAsSession}
                 activeOpacity={0.8}
                 disabled={!sessionNameInput.trim() || savingSession}
               >
                 {savingSession
-                  ? <ActivityIndicator size="small" color={Colors.background} />
-                  : <Text style={styles.modalSaveTxt}>Save</Text>
-                }
+                  ? <ActivityIndicator size="small" color={onAccent} />
+                  : <Text style={s.modalSaveTxt}>Save</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -343,92 +390,114 @@ export default function SummaryScreen({ navigation, route }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { backgroundColor: Colors.background },
+const s = StyleSheet.create({
+  container: { backgroundColor: Colors.base },
+  scroll:    { padding: Spacing.md, paddingBottom: Spacing.xl, gap: Spacing.sm },
 
-  header: {
-    alignItems: 'center', paddingTop: Spacing.xl, paddingBottom: Spacing.lg,
-    paddingHorizontal: Spacing.lg, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  trophy:      { fontSize: 48, marginBottom: Spacing.sm },
-  title:       { ...Typography.h1, color: Colors.gold },
-  sessionName: { ...Typography.body, color: Colors.textSecondary, marginTop: 4 },
-  discardedBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    marginTop: Spacing.sm, backgroundColor: Colors.surfaceRaised,
-    paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: Radius.full,
-  },
-  discardedBadgeTxt: { ...Typography.caption, color: Colors.textMuted },
+  hero:      { alignItems: 'center', gap: Spacing.xs, paddingVertical: Spacing.lg },
+  heroTitle: { ...Typography.h1, color: Colors.gold, letterSpacing: 1 },
+  heroSub:   { ...Typography.body, color: Colors.textMuted, textAlign: 'center' },
+  heroNote:  { ...Typography.caption, color: Colors.textFaint, marginTop: Spacing.xs },
 
-  statsBar: {
-    flexDirection: 'row', backgroundColor: Colors.surface,
-    paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  tiles: { flexDirection: 'row', gap: Spacing.sm },
+  tile: {
+    flexGrow: 1, flexShrink: 1, flexBasis: 0,
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    paddingVertical: Spacing.md, paddingHorizontal: Spacing.sm,
+    alignItems: 'center', gap: 2, ...Elevation.card,
   },
-  statCell:    { flex: 1, alignItems: 'center', gap: 2 },
-  statValue:   { ...Typography.h2, color: Colors.textPrimary },
-  statLabel:   { ...Typography.label, color: Colors.textMuted, fontSize: 11 },
-  statDivider: { width: 1, backgroundColor: Colors.border },
+  tileValue: { ...Typography.statHuge, fontSize: 30, lineHeight: 34 },
+  tileLabel: { ...Typography.label, color: Colors.textFaint },
+  tileSub:   { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
 
-  listContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.sm },
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
+  section: { ...Typography.label, color: Colors.textFaint, marginTop: Spacing.lg },
 
-  jsonNote: {
-    flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-    marginTop: Spacing.lg, justifyContent: 'center',
+  prRow: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.goldDim,
+    padding: Spacing.md,
   },
-  jsonNoteText: { ...Typography.bodySmall, color: Colors.textMuted },
+  prName:   { ...Typography.h3, color: Colors.text },
+  prSet:    { ...Typography.bodySmall, color: Colors.textMuted },
+  prE1rm:   { ...Typography.metric, color: Colors.gold },
+  prShadow: { ...Typography.caption, color: Colors.textFaint },
+  prGain:   { ...Typography.caption, color: Colors.gold },
 
   footerWrap: {
-    borderTopWidth: 1, borderTopColor: Colors.border,
+    borderTopWidth: 1, borderTopColor: Colors.line,
+    backgroundColor: Colors.base,
     padding: Spacing.md, gap: Spacing.sm,
   },
-  footer: {
-    flexDirection: 'row', gap: Spacing.sm,
+  footerRow: { flexDirection: 'row', gap: Spacing.sm },
+  ghostBtn: {
+    flexGrow: 1, flexShrink: 1, flexBasis: 0,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, height: Touch.min,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.line,
   },
-  saveSessionBtn: {
-    height: 48, borderRadius: Radius.lg,
-    borderWidth: 1.5, borderColor: Colors.blue,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
+  ghostTxt: { ...Typography.bodyMedium },
+  doneBtn: {
+    height: Touch.gym, borderRadius: Radius.md, backgroundColor: Colors.ember,
+    alignItems: 'center', justifyContent: 'center',
   },
-  saveSessionBtnDone: { borderColor: Colors.gold, backgroundColor: `${Colors.gold}18` },
-  saveSessionBtnTxt: { ...Typography.h3, color: Colors.blue, fontWeight: '700' },
+  doneTxt: { ...Typography.h2, color: onAccent, letterSpacing: 1 },
 
-  modalOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: '#000000CC', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+  modalScrim: {
+    ...StyleSheet.absoluteFillObject, backgroundColor: SCRIM,
+    alignItems: 'center', justifyContent: 'center', padding: Spacing.xl,
   },
   modalBox: {
-    backgroundColor: Colors.surface, borderRadius: Radius.lg,
-    padding: Spacing.xl, margin: Spacing.xl, gap: Spacing.md,
-    borderWidth: 1, borderColor: Colors.border, alignSelf: 'stretch', ...Shadows.card,
+    width: '100%', maxWidth: 420,
+    backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    borderWidth: 1, borderColor: Colors.line,
+    padding: Spacing.xl, gap: Spacing.md, ...Elevation.floating,
   },
-  modalTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
-  modalMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
+  modalTitle: { ...Typography.h2, color: Colors.text },
+  modalMsg:   { ...Typography.bodySmall, color: Colors.textMuted },
   modalInput: {
-    height: 48, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised,
-    paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.textPrimary,
+    height: Touch.gym, borderRadius: Radius.md, backgroundColor: Colors.raised,
+    borderWidth: 1, borderColor: Colors.line,
+    paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.text,
   },
-  modalBtns: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xs },
-  modalCancelBtn: {
-    flex: 1, height: 48, borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center',
+  modalBtns: { flexDirection: 'row', gap: Spacing.sm },
+  modalCancel: {
+    flexGrow: 1, flexShrink: 1, flexBasis: 0, height: Touch.min,
+    borderRadius: Radius.md, backgroundColor: Colors.raised,
+    alignItems: 'center', justifyContent: 'center',
   },
-  modalCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
-  modalSaveBtn: {
-    flex: 1, height: 48, borderRadius: Radius.md,
-    backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center',
+  modalCancelTxt: { ...Typography.h3, color: Colors.text },
+  modalSave: {
+    flexGrow: 1, flexShrink: 1, flexBasis: 0, height: Touch.min,
+    borderRadius: Radius.md, backgroundColor: Colors.ember,
+    alignItems: 'center', justifyContent: 'center',
   },
-  modalSaveTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
-  csvBtn: {
-    flex: 1, height: 56, borderRadius: Radius.lg,
-    borderWidth: 2, borderColor: Colors.primary,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
+  modalSaveTxt: { ...Typography.h3, color: onAccent },
+});
+
+const r = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.line,
+    padding: Spacing.md, gap: Spacing.sm,
   },
-  csvBtnTxt:  { ...Typography.h3, color: Colors.primary, fontWeight: '700' },
-  homeBtn: {
-    flex: 1, height: 56, borderRadius: Radius.lg, backgroundColor: Colors.primary,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
-    ...Shadows.orange,
+  head:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  order: { ...Typography.caption, color: Colors.textFaint, width: 16,
+           fontVariant: ['tabular-nums'] },
+  name:  { ...Typography.h3, color: Colors.text, flex: 1, minWidth: 0 },
+
+  pills: { flexDirection: 'row', gap: Spacing.sm, flexWrap: 'wrap' },
+  pill: {
+    backgroundColor: Colors.raised, borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm, paddingVertical: Spacing.xs,
+    alignItems: 'center', minWidth: 68,
   },
-  homeBtnTxt: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  pillLabel:  { ...Typography.caption, color: Colors.textFaint },
+  pillValue:  { ...Typography.metric, color: Colors.text },
+  pillShadow: { ...Typography.caption, color: Colors.textFaint },
+
+  subRow:   { flexDirection: 'row', justifyContent: 'space-between',
+              alignItems: 'center', gap: Spacing.sm, paddingVertical: 2 },
+  subName:  { ...Typography.bodySmall, color: Colors.textMuted, flex: 1, minWidth: 0 },
+  subStats: { ...Typography.bodySmall, color: Colors.text, fontVariant: ['tabular-nums'] },
 });

@@ -82,9 +82,11 @@ function Headline({ h }) {
       <Tile
         label="Under load"
         value={ul.workSecs == null ? '—' : fmtDur(ul.workSecs)}
-        sub={ul.workSecs == null
-          ? 'no timed sets yet'
-          : `of ${fmtDur(ul.totalSecs)} · ${Math.round(ul.density * 100)}%`}
+        sub={ul.workSecs != null
+          ? `of ${fmtDur(ul.totalSecs)} · ${Math.round(ul.density * 100)}%`
+          // "no timed sets yet" read as "this app has never timed a set",
+          // when usually it just means the week has not started.
+          : h.sessions.value === 0 ? 'no sessions this week' : 'no timed sets'}
       />
       <Tile
         label="Streak" value={h.streak.current}

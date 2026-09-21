@@ -1052,17 +1052,26 @@ names stay aliased until the last stage, so no screen is migrated twice.
 | **6** | **Training** | ⬜ | Rest hero · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed `SET DONE` bar · Summary rebuild |
 | **7** | **Sweep** | ⬜ | Train tab · editor restyle · shared primitives · empty/loading states · splash + notification icon · delete the legacy token aliases · release build |
 
-**Shipped as v12 / versionCode 12 (1.4.0).** Stages 1–5 are in; 6 and 7 remain.
+**Shipped as v13 / versionCode 13 (1.4.1).** Stages 1–5 are in; 6 and 7 remain.
 
-Known gaps at v12, both scheduled for stage 6:
+v13 is v12 plus four corrections found by walking the build on the emulator:
+the You tab's rest-timer and sound rows had glyphs that read as a no-entry sign
+and a heart-rate trace (see ICON-FIXES.md); the Body tab's pound shadow sat
+below the date axis where it read as a label on the first date, and now sits
+beside the value it converts; and the Stats "under load" tile said *no timed
+sets yet* for a week that simply had not started, which read as though the app
+had never timed anything.
+
+Known gaps at v13, both scheduled for stage 6:
 
 - **The training screen is untouched.** It still has the small header rest
   timer, the status dot instead of set pips, the full-screen detail swap, and
   the one-tap-per-kilo stepper. That is the single biggest usability change in
   the whole redesign and it has not happened yet.
 - **The lb shadow (§3.5) is only on the Body tab, the export and Exercise
-  Detail.** It belongs on the set-detail weight box most of all, which is
-  stage 6 work.
+  Detail.** It belongs on the set-detail weight box most of all — the one place
+  you actually read a weight off the screen and set a machine to it, which is
+  the entire reason §12.1 asked for it. That is stage 6 work.
 
 ---
 
