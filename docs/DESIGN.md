@@ -1076,7 +1076,11 @@ names stay aliased until the last stage, so no screen is migrated twice.
 | **6** | **Training** | ✅ | Rest hero with a draining ring · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed 72px `SET DONE` bar · Summary rebuilt on volume/under-load/PRs |
 | **7** | **Sweep** | ✅ | Train tab with a next-up hero, swipe actions and a speed dial · editor restyle · shared primitives · skeleton loading + empty states · splash re-ground, notification icon wired, adaptive-icon field · 18 legacy aliases deleted · release build |
 
-**Shipped as v15 / versionCode 15 (1.5.1).** All seven stages are in, and the two gaps v14 shipped with are closed.
+**Shipped as v16 / versionCode 16 (1.6.0).** All seven redesign stages are in,
+and the first four backlog items with them (`docs/BACKLOG.md`): a finished
+session can no longer be lost, the set sheet shows what you did last time and
+what to load, it suggests when to add weight, and a planned session can gain an
+exercise mid-flight.
 
 What stages 6 and 7 changed, beyond the table above:
 

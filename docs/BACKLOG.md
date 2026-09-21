@@ -209,13 +209,13 @@ suggestion is that you can tell in advance what it will say, and disagree.
 
 ## Order
 
-| # | Work | Size | Why here |
+| # | Work | Size | Status |
 |---|---|---|---|
-| 1 | `sync` + `atomic` | ~4d | Same file, same concern. Establishes local-persist-then-reconcile, which 2 and 5 both reuse |
-| 2 | `lasttime` + `plates` | ~3d | One pass through the set sheet; lasttime reads the cache 1 built |
-| 3 | `overload` | ~3d | Needs lasttime's data plumbing; do it while still in that code |
-| 4 | `midadd` | ~3d | Independent and self-contained |
-| 5 | `editlog` | ~8d | Wants 1's durable write path rather than a retrofit |
+| 1 | `sync` + `atomic` | ~4d | **Shipped v16.** Durable outbox + one transactional, idempotent RPC |
+| 2 | `lasttime` + `plates` | ~3d | **Shipped v16.** Local last-performance cache; tap-to-show plate breakdown |
+| 3 | `overload` | ~3d | **Shipped v16.** Hit-all-sets rule, tappable, says why when it declines |
+| 4 | `midadd` | ~3d | **Shipped v16.** Splices in before the cardio; changes today, not the template |
+| 5 | `editlog` | ~8d | Next. Wants 1's durable write path rather than a retrofit |
 | 6 | `web` | ~8d | Separate codebase, no dependencies, and the only item that does not improve the phone |
 
 ≈4–5 weeks for mobile, ≈6–7 including web. The only hard dependency is 1 before
