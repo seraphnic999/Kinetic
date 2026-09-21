@@ -1121,8 +1121,9 @@ Known gaps at v14:
   field.** A five-exercise combo rendered with five WeightFields is three
   screens of scrolling. The step is still 2.5 kg and each weight still carries
   its pound shadow, but the chips are not there.
-- **`combo` and `diet` remain weak glyphs** (ICON-FIXES.md) — one reads as a
-  clover, the other as a prohibition sign.
+- **`emptySessions` is the one weak glyph left** (ICON-FIXES.md). The thirteen
+  corrections — `combo` and `diet` among them — were delivered and installed on
+  2026-09-20; an earlier version of this line said otherwise and was wrong.
 - **Historic combo volume before the `parent_id` migration is unrecoverable.**
   §12.5 — the events were logged without weights, so there is nothing to
   backfill from.

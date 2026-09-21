@@ -4,17 +4,34 @@ Glyphs that landed but need redrawing. Collected as they were found so they can
 go back to the generator in one or two batches at the end, rather than
 interrupting the run.
 
-**Status: 100 of 100 installed. 14 want a redraw. Nothing is blocked.**
+**Status: 100 of 100 installed. The 13 corrections were delivered and are IN
+THE APP. One glyph is genuinely still weak.**
 
-`statusComplete` is no longer outstanding — it was authored by hand
-(`mktick.py`) because its source used three `<mask>` elements and the generator
-cannot fold a mask into a single path. `99-corrections-solid.txt` is therefore
-spent; ignore it.
+Corrected history, because this file was stale and misled a later session into
+asking for work that was already done:
 
-The remaining redraws are written as ready-to-paste prompts in
-`icon-prompts/99-corrections.txt`. Every one of them is currently **in the
-app**, so none of this blocks anything — the wrong glyph is visible rather than
-absent, and the app ships and works with all fourteen as they are.
+- The 13 redraws listed below were delivered on 2026-09-20 as
+  `refined_gym_icons_set.zip`, copied into `assets/icons-src/` and regenerated
+  into `src/components/Icon.js` the same day. Re-running
+  `node scripts/generate-icons.mjs` today produces a byte-identical file, which
+  is the proof: **`warmup`, `flame`, `combo`, `barbell`, `tonnage`, `streak`,
+  `compare`, `sets`, `plate`, `tape`, `bodyProfile`, `diet` and `emptyMetrics`
+  are all the corrected versions.** The table further down is kept as the
+  record of WHY each was redrawn, not as a to-do list.
+- `statusComplete` was delivered as a separate solid SVG and, because its
+  source used three `<mask>` elements the generator cannot fold into one path,
+  was authored by hand instead (`mktick.py`). It is installed.
+- `icon-prompts/99-corrections.txt` and `99-corrections-solid.txt` are both
+  **spent**. Do not re-send them.
+
+Still open — one glyph, found on device on 2026-09-21:
+
+| Glyph | Where it hurts | Why it fails |
+|---|---|---|
+| `emptySessions` | The empty state on Train, the editor and the training rail — at `IconSize.empty` (72px) | Meant to read as a bare rack. It is two vertical strokes with short stubs and two feet, and at that size it resolves into two stray brackets rather than an object |
+
+`rest` also reads as a no-entry sign at row size, but it is no longer drawn
+anywhere — its one call site moved to `timer` — so it needs no redraw.
 
 ---
 
