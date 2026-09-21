@@ -408,16 +408,22 @@ export default function SessionEditorScreen({ navigation, route }) {
         {/* Rest Timer */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>REST TIMER</Text>
+          {/* No "Seconds" label on the stepper: the section is already called
+              REST TIMER and the readout beside it spells the value out, so a
+              third label stacked between them said nothing twice. Stepping by
+              15 keeps the value on the grid people actually pick — 45, 60, 90
+              — rather than walking it one second at a time. */}
           <View style={styles.restTimerRow}>
             <Stepper
-              label="Seconds"
               value={restTimerSecs}
               onChange={setRestTimerSecs}
               min={0}
               max={600}
+              step={15}
+              fillRow={false}
             />
             <Text style={styles.restTimerHint}>
-              {formatTime(restTimerSecs)}
+              {restTimerSecs === 0 ? 'no rest timer' : formatTime(restTimerSecs)}
             </Text>
           </View>
         </View>

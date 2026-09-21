@@ -213,6 +213,23 @@ function RegularDetail({ exercise, state, onUpdate }) {
 function ComboDetail({ exercise, state, onUpdate }) {
   const total = exercise.sets ?? 0;
   const done  = Math.max(0, total - (state.setsLeft ?? 0));
+  const subs  = exercise.subExercises ?? [];
+
+  // One station open at a time.
+  //
+  // Five WeightFields stacked is three screens of scrolling, and a combo is
+  // the one place you genuinely want to SEE every station before you start —
+  // you set the whole circuit up once, then run rounds without editing. So
+  // the closed row is the summary (weight x reps, with its pound shadow) and
+  // opening one gives it the same plate-math controls a single lift gets.
+  const [open, setOpen] = useState(null);
+
+  const setW = (idx, v) => {
+    const sw = [...(state.subWeights ?? [])]; sw[idx] = v; onUpdate({ subWeights: sw });
+  };
+  const setR = (idx, v) => {
+    const sr = [...(state.subReps ?? [])]; sr[idx] = v; onUpdate({ subReps: sr });
+  };
 
   return (
     <View style={d.body}>
@@ -223,33 +240,54 @@ function ComboDetail({ exercise, state, onUpdate }) {
         </Text>
       </View>
 
-      {(exercise.subExercises ?? []).map((sub, idx) => {
-        const nm = sub.name === 'Other'
-          ? (sub.customName || `Exercise ${idx + 1}`)
-          : (sub.name || `Exercise ${idx + 1}`);
-        const w = state.subWeights?.[idx] ?? 0;
-        return (
-          <View key={sub.id ?? idx} style={d.subCard}>
-            <View style={d.subHead}>
-              <Text style={d.subName} numberOfLines={1}>{nm}</Text>
-              {sub.bodySection ? <Text style={d.subSection}>{sub.bodySection}</Text> : null}
+      <View style={{ gap: Spacing.sm }}>
+        <Text style={d.adjustLabel}>{subs.length} STATIONS PER ROUND</Text>
+
+        {subs.map((sub, idx) => {
+          const nm = sub.name === 'Other'
+            ? (sub.customName || `Exercise ${idx + 1}`)
+            : (sub.name || `Exercise ${idx + 1}`);
+          const w = state.subWeights?.[idx] ?? 0;
+          const r = state.subReps?.[idx] ?? 1;
+          const isOpen = open === idx;
+
+          return (
+            <View key={sub.id ?? idx} style={[d.subCard, isOpen && d.subCardOpen]}>
+              <TouchableOpacity
+                style={d.stationHead}
+                onPress={() => setOpen(isOpen ? null : idx)}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityLabel={`${nm}, ${w} kilograms by ${r} reps. Tap to ${isOpen ? 'close' : 'edit'}.`}
+              >
+                <Text style={d.stationNum}>{idx + 1}</Text>
+
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={d.subName} numberOfLines={1}>{nm}</Text>
+                  {sub.bodySection ? <Text style={d.subSection}>{sub.bodySection}</Text> : null}
+                </View>
+
+                {!isOpen && (
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={d.stationMeta}>{w} kg × {r}</Text>
+                    {w > 0 ? <Text style={d.subShadow}>{lbLabel(w)}</Text> : null}
+                  </View>
+                )}
+
+                <Icon name={isOpen ? 'chevronUp' : 'chevronDown'}
+                      size={IconSize.meta} color={Colors.textMuted} />
+              </TouchableOpacity>
+
+              {isOpen && (
+                <View style={d.stationBody}>
+                  <WeightField value={w} onChange={v => setW(idx, v)} />
+                  <RepsField   value={r} onChange={v => setR(idx, v)} />
+                </View>
+              )}
             </View>
-            <View style={d.subRow}>
-              <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0 }}>
-                <Stepper size="large" label="WEIGHT (kg)" step={2.5}
-                  value={w} min={0} max={500}
-                  onChange={v => { const sw = [...state.subWeights]; sw[idx] = v; onUpdate({ subWeights: sw }); }} />
-                <Text style={d.subShadow}>{lbLabel(w)}</Text>
-              </View>
-              <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: 0 }}>
-                <Stepper size="large" label="REPS"
-                  value={state.subReps?.[idx] ?? 1} min={1} max={999}
-                  onChange={v => { const sr = [...state.subReps]; sr[idx] = v; onUpdate({ subReps: sr }); }} />
-              </View>
-            </View>
-          </View>
-        );
-      })}
+          );
+        })}
+      </View>
 
       <View style={d.adjustRow}>
         <Text style={d.adjustLabel}>ROUNDS LEFT</Text>
@@ -437,6 +475,14 @@ const d = StyleSheet.create({
   subHead:     { gap: 2 },
   subName:     { ...Typography.h3, color: Colors.text },
   subSection:  { ...Typography.bodySmall, color: Colors.textMuted },
+  subCardOpen: { borderColor: Colors.ember },
+  stationHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+                 minHeight: Touch.min },
+  stationNum:  { ...Typography.caption, color: Colors.textFaint, width: 12,
+                 fontVariant: ['tabular-nums'] },
+  stationMeta: { ...Typography.metric, color: Colors.text },
+  stationBody: { gap: Spacing.lg, paddingTop: Spacing.md, marginTop: Spacing.xs,
+                 borderTopWidth: 1, borderTopColor: Colors.line },
   subRow:      { flexDirection: 'row', gap: Spacing.sm },
   subShadow:   { ...Typography.caption, color: Colors.textFaint, textAlign: 'center', marginTop: 2 },
 

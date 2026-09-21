@@ -1076,7 +1076,7 @@ names stay aliased until the last stage, so no screen is migrated twice.
 | **6** | **Training** | ✅ | Rest hero with a draining ring · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed 72px `SET DONE` bar · Summary rebuilt on volume/under-load/PRs |
 | **7** | **Sweep** | ✅ | Train tab with a next-up hero, swipe actions and a speed dial · editor restyle · shared primitives · skeleton loading + empty states · splash re-ground, notification icon wired, adaptive-icon field · 18 legacy aliases deleted · release build |
 
-**Shipped as v14 / versionCode 14 (1.5.0).** All seven stages are in.
+**Shipped as v15 / versionCode 15 (1.5.1).** All seven stages are in, and the two gaps v14 shipped with are closed.
 
 What stages 6 and 7 changed, beyond the table above:
 
@@ -1117,10 +1117,11 @@ an absolutely-positioned overlay inside the screen.
 
 Known gaps at v14:
 
-- **Combo weight entry is a compact stepper pair, not the full plate-math
-  field.** A five-exercise combo rendered with five WeightFields is three
-  screens of scrolling. The step is still 2.5 kg and each weight still carries
-  its pound shadow, but the chips are not there.
+- ~~Combo weight entry is a compact stepper pair.~~ **Closed in v15.** A
+  combo is now an accordion: every station shows its weight × reps and pound
+  shadow at a glance — which is what you want before starting a circuit — and
+  opening one gives it the same plate-math field a single lift gets. Stacking
+  five WeightFields was never the answer; one at a time is.
 - **The icon set is done.** All 100 glyphs are installed and none is
   outstanding (ICON-FIXES.md). One constraint worth knowing: the icon pipeline
   cannot render a dashed stroke — `Icon.js` strokes one path with no
