@@ -33,7 +33,7 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 /** Shared frame: label, ± flanking a tappable value, chips beneath. */
 function Field({
   label, value, onChange, min, max, step, chips, unit, shadow, disabled,
-  keyboard = 'numeric',
+  keyboard = 'numeric', hint = false,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -123,7 +123,7 @@ function Field({
         </View>
       ) : null}
 
-      <Text style={s.hint}>tap the value to type</Text>
+      {hint ? <Text style={s.hint}>tap the value to type</Text> : null}
     </View>
   );
 }
@@ -141,6 +141,7 @@ export function WeightField({ value, onChange, disabled, label = 'WEIGHT' }) {
       chips={[-5, -2.5, 2.5, 5, 10]}
       unit="kg"
       shadow
+      hint
       disabled={disabled}
     />
   );

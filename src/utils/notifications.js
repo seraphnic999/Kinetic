@@ -60,7 +60,15 @@ export const scheduleTimerNotification = async (seconds, body, soundFile = 'beep
         sound: soundFile,   // must match filename declared in app.json plugin sounds array
         priority: Notifications.AndroidNotificationPriority.HIGH,
       },
-      trigger: { seconds: Math.ceil(seconds), repeats: false },
+      // expo-notifications 56 rejects a bare { seconds } trigger — it needs an
+      // explicit type. Without it EVERY timer notification failed to schedule
+      // and the only trace was a console warning, so rest, warmup, interval
+      // and cardio alerts have all been silently dead in the background.
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: Math.ceil(seconds),
+        repeats: false,
+      },
     });
     return id;
   } catch (e) {

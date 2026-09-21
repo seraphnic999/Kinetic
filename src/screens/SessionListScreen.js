@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, StatusBar, useWindowDimensions, Animated,
+  RefreshControl, StatusBar, Animated,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
@@ -70,7 +70,6 @@ function AreaGlyphs({ areas, size = IconSize.meta, tint = Colors.textMuted, max 
 
 export default function SessionListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
 
   const [sessions, setSessions]   = useState(null);   // null = first load
   const [history, setHistory]     = useState(null);
@@ -248,7 +247,7 @@ export default function SessionListScreen({ navigation }) {
   const rest    = nextUp ? (sessions ?? []).filter(x => x.id !== nextUp.id) : (sessions ?? []);
 
   return (
-    <View style={[s.container, { height: windowHeight }]}>
+    <View style={s.container}>
       <StatusBar barStyle="light-content" backgroundColor={Colors.base} />
 
       {/* Header. The four-circle cluster that used to live here is gone: the
@@ -285,7 +284,7 @@ export default function SessionListScreen({ navigation }) {
           keyExtractor={item => item.id}
           renderItem={renderRow}
           ListHeaderComponent={renderHero()}
-          contentContainerStyle={[s.list, { paddingBottom: insets.bottom + 120 }]}
+          contentContainerStyle={[s.list, { paddingBottom: 120 }]}
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -299,7 +298,7 @@ export default function SessionListScreen({ navigation }) {
         <TouchableOpacity style={s.dialScrim} activeOpacity={1}
                           onPress={() => setDialOpen(false)} accessible={false} />
       )}
-      <View style={[s.dial, { bottom: insets.bottom + Spacing.lg }]} pointerEvents="box-none">
+      <View style={s.dial} pointerEvents="box-none">
         {dialOpen && (
           <>
             <TouchableOpacity style={s.dialItem} onPress={startQuick} activeOpacity={0.85}
@@ -340,7 +339,7 @@ export default function SessionListScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  container: { backgroundColor: Colors.base },
+  container: { flex: 1, backgroundColor: Colors.base },
 
   header: {
     flexDirection: 'row', alignItems: 'center',
@@ -393,7 +392,10 @@ const s = StyleSheet.create({
 
   // ── Speed dial ──────────────────────────────────────────────────────────
   dialScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,8,10,0.6)' },
-  dial:      { position: 'absolute', right: Spacing.md, alignItems: 'flex-end', gap: Spacing.sm },
+  // Bottom is measured from the screen area, which already stops above the
+  // tab bar — and the tab bar owns the safe-area inset (TabBar.js).
+  dial:      { position: 'absolute', right: Spacing.md, bottom: Spacing.lg,
+               alignItems: 'flex-end', gap: Spacing.sm },
   dialItem:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   dialLabel: {
     ...Typography.bodyMedium, color: Colors.text,

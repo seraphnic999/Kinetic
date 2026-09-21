@@ -17,11 +17,13 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Modal, Animated, PanResponder,
-  TouchableWithoutFeedback, TouchableOpacity, useWindowDimensions,
+  Pressable, TouchableOpacity, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, IconSize, Motion, SCRIM } from '../theme';
 import { Icon } from './Icon';
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /** Past this many pixels, or this fast, the release closes rather than snaps back. */
 const DISMISS_PX = 110;
@@ -104,9 +106,12 @@ export function Sheet({
     <Modal visible={mounted} transparent animationType="none" onRequestClose={close}
            statusBarTranslucent>
       <View style={st.fill}>
-        <TouchableWithoutFeedback onPress={close} accessible={false}>
-          <Animated.View style={[st.scrim, { opacity: anim }]} />
-        </TouchableWithoutFeedback>
+        <AnimatedPressable
+          style={[st.scrim, { opacity: anim }]}
+          onPress={close}
+          accessibilityRole="button"
+          accessibilityLabel="Close"
+        />
 
         <Animated.View
           style={[

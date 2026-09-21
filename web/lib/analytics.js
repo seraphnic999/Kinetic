@@ -82,7 +82,12 @@ export const fmtDate = (value) =>
 
 /** Duration in seconds → "45m" / "2h 05m". */
 export const fmtDur = (secs) => {
-  const m = Math.floor((secs ?? 0) / 60);
+  const n = Math.max(0, Math.round(secs ?? 0));
+  // Under a minute, say seconds. Flooring to "0m" next to "1% of session" reads
+  // as a broken tile rather than as a very short time — which is exactly what
+  // the summary showed for a single quick set.
+  if (n < 60) return `${n}s`;
+  const m = Math.floor(n / 60);
   return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 };
 

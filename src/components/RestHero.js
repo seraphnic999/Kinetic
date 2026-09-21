@@ -20,11 +20,23 @@ import {
 import Svg, { Circle } from 'react-native-svg';
 import { Colors, Typography, Spacing, Radius, IconSize, Touch } from '../theme';
 import { Icon } from './Icon';
-import { formatTime } from '../utils/time';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 const STROKE = 10;
+
+/**
+ * "45", "1:30" — not "00:45".
+ *
+ * `formatTime` always pads to MM:SS, and five characters of seven-segment do
+ * not fit inside a ring that also has to fit the top third of the screen. Rest
+ * is never hours, and the leading zeros carry nothing.
+ */
+const restLabel = (secs) => {
+  const n = Math.max(0, Math.round(secs));
+  if (n < 60) return String(n);
+  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+};
 /** Cap, not a constant: the whole hero must still fit the top third (§7.2b). */
 const RING_MAX = 200;
 
@@ -78,10 +90,15 @@ export function RestHero({ secsLeft, totalSecs, nextLabel, nextSub, nextIcon, on
           />
         </Svg>
 
-        <View style={s.ringCentre} pointerEvents="none">
+        <View style={[s.ringCentre, { paddingHorizontal: STROKE * 1.5 }]} pointerEvents="none">
           <Text style={s.label}>REST</Text>
-          <Text style={[s.digits, { color: tone, fontSize: Math.round(RING * 0.34) }]}>
-            {formatTime(Math.max(0, secsLeft))}
+          <Text
+            style={[s.digits, { color: tone, fontSize: Math.round(RING * 0.34) }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+          >
+            {restLabel(secsLeft)}
           </Text>
         </View>
       </View>

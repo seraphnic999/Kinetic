@@ -125,7 +125,7 @@ const getExerciseMeta = (ex, st) => {
   if (ex.type === EXERCISE_TYPES.COMBO)
     return `${ex.subExercises?.length ?? 0} exercises · ${ex.sets} sets`;
   if (ex.type === EXERCISE_TYPES.WARMUP)
-    return `${ex.warmupType} · ${ex.duration} min`;
+    return `${ex.warmupType} · ${formatTime(ex.duration ?? 180)}`;
   if (ex.type === EXERCISE_TYPES.INTERVALS) {
     const cardioType = getCardioType(ex);
     if (cardioType === CARDIO_TYPES.TREADMILL)
@@ -1537,7 +1537,6 @@ export default function TrainingScreen({ navigation, route }) {
       <ConfirmDialog
         visible={showEndConfirm}
         onDismiss={() => setShowEndConfirm(false)}
-        icon="statusPartial"
         title="End session?"
         message="Save it to your stats, or discard it — handy for testing without touching your history."
         dismissLabel="Keep training"
