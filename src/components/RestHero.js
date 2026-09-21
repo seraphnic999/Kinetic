@@ -127,7 +127,11 @@ const s = StyleSheet.create({
   wrap: { alignItems: 'center', paddingVertical: Spacing.lg, gap: Spacing.md },
 
   ringWrap:   { alignItems: 'center', justifyContent: 'center' },
-  ringCentre: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  // Longhand, NOT StyleSheet.absoluteFillObject — react-native 0.85 removed
+  // it, and the spread of an undefined silently produced an unpositioned
+  // view, which is why the countdown used to render below its own ring.
+  ringCentre: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                alignItems: 'center', justifyContent: 'center' },
 
   label:  { ...Typography.label, color: Colors.textFaint, marginBottom: Spacing.xs },
   digits: { ...Typography.timerHero },

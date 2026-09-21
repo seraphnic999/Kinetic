@@ -54,8 +54,11 @@ function Grid({ w, max, min = 0, format }) {
 }
 
 function AxisLabels({ w, max, min = 0, format }) {
+  // c.fill is written longhand: RN 0.85 removed StyleSheet.absoluteFill, and
+  // `style={undefined}` left this wrapper unpositioned, so the value axis was
+  // laid out below the plot instead of over it.
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={c.fill} pointerEvents="none">
       {[0, 0.5, 1].map(t => {
         const y = PAD_B + (1 - t) * (H - PAD_B - 8);
         return (
@@ -191,6 +194,7 @@ export function LineChart({ data, secondary, color = Colors.ember, format = Stri
 }
 
 const c = StyleSheet.create({
+  fill: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   card: {
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
     padding: Spacing.md, ...Elevation.card,

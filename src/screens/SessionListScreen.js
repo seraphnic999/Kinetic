@@ -14,13 +14,13 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, StatusBar, Animated,
+  RefreshControl, StatusBar, Animated, Modal, Pressable,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent,
+  Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent, SCRIM,
 } from '../theme';
 import { Icon } from '../components/Icon';
 import { EmptyState, SkeletonList } from '../components/States';
@@ -32,6 +32,9 @@ import { EXERCISE_TYPES } from '../data/exercises';
 import {
   shapeSessions, deriveAll, fmtTonnes, fmtDur, dayLabel, SESSION_LIMIT,
 } from '../utils/analytics';
+
+/** TabBar.js draws an 80px bar; the modal sits over it, so it must clear it. */
+const TAB_BAR_H = 80;
 
 const SECTION_ICON = {
   Chest: 'bodyChest', Back: 'bodyBack', Shoulders: 'bodyShoulders',
@@ -294,13 +297,24 @@ export default function SessionListScreen({ navigation }) {
       )}
 
       {/* ── Speed dial (decision 6) ──────────────────────────────────── */}
-      {dialOpen && (
-        <TouchableOpacity style={s.dialScrim} activeOpacity={1}
-                          onPress={() => setDialOpen(false)} accessible={false} />
-      )}
+      {/* The resting button sits in the screen; the OPEN dial is a Modal.
+          An absolutely-positioned in-screen scrim measured as painting nothing
+          on device (background pixels byte-identical, peak 245 both ways),
+          while a modal root with a flat background dims correctly. */}
       <View style={s.dial} pointerEvents="box-none">
-        {dialOpen && (
-          <>
+        <TouchableOpacity style={[s.dialBtn, s.dialMain]} onPress={() => setDialOpen(true)}
+                          activeOpacity={0.85} accessibilityRole="button"
+                          accessibilityLabel="Create">
+          <Icon name="add" size={IconSize.tab} color={onAccent} />
+        </TouchableOpacity>
+      </View>
+
+      <Modal visible={dialOpen} transparent animationType="fade"
+             onRequestClose={() => setDialOpen(false)} statusBarTranslucent>
+        <Pressable style={s.dialScrim} onPress={() => setDialOpen(false)}
+                   accessibilityRole="button" accessibilityLabel="Close menu">
+          <View style={[s.dial, { bottom: insets.bottom + TAB_BAR_H + Spacing.lg }]}
+                pointerEvents="box-none">
             <TouchableOpacity style={s.dialItem} onPress={startQuick} activeOpacity={0.85}
                               accessibilityRole="button">
               <Text style={s.dialLabel}>Quick session</Text>
@@ -315,14 +329,14 @@ export default function SessionListScreen({ navigation }) {
                 <Icon name="edit" size={IconSize.row} color={Colors.ice} />
               </View>
             </TouchableOpacity>
-          </>
-        )}
-        <TouchableOpacity style={[s.dialBtn, s.dialMain]} onPress={() => setDialOpen(o => !o)}
-                          activeOpacity={0.85} accessibilityRole="button"
-                          accessibilityLabel={dialOpen ? 'Close menu' : 'Create'}>
-          <Icon name={dialOpen ? 'close' : 'add'} size={IconSize.tab} color={onAccent} />
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity style={[s.dialBtn, s.dialMain]} onPress={() => setDialOpen(false)}
+                              activeOpacity={0.85} accessibilityRole="button"
+                              accessibilityLabel="Close menu">
+              <Icon name="close" size={IconSize.tab} color={onAccent} />
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
 
       <ConfirmDialog
         visible={!!deleteTarget}
@@ -391,7 +405,7 @@ const s = StyleSheet.create({
   actionTxt: { ...Typography.caption, color: Colors.text },
 
   // ── Speed dial ──────────────────────────────────────────────────────────
-  dialScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,8,10,0.6)' },
+  dialScrim: { flex: 1, backgroundColor: SCRIM },
   // Bottom is measured from the screen area, which already stops above the
   // tab bar — and the tab bar owns the safe-area inset (TabBar.js).
   dial:      { position: 'absolute', right: Spacing.md, bottom: Spacing.lg,

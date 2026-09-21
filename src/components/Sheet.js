@@ -23,8 +23,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, IconSize, Motion, SCRIM } from '../theme';
 import { Icon } from './Icon';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
 /** Past this many pixels, or this fast, the release closes rather than snaps back. */
 const DISMISS_PX = 110;
 const DISMISS_VY = 0.75;
@@ -106,12 +104,9 @@ export function Sheet({
     <Modal visible={mounted} transparent animationType="none" onRequestClose={close}
            statusBarTranslucent>
       <View style={st.fill}>
-        <AnimatedPressable
-          style={[st.scrim, { opacity: anim }]}
-          onPress={close}
-          accessibilityRole="button"
-          accessibilityLabel="Close"
-        />
+        {/* Fills every pixel above the sheet, so tapping off it closes. */}
+        <Pressable style={{ flex: 1 }} onPress={close}
+                   accessibilityRole="button" accessibilityLabel="Close" />
 
         <Animated.View
           style={[
@@ -151,8 +146,8 @@ export function Sheet({
 }
 
 const st = StyleSheet.create({
-  fill:  { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: SCRIM },
+  // The scrim IS this view. See the note at the Pressable above.
+  fill: { flex: 1, justifyContent: 'flex-end', backgroundColor: SCRIM },
 
   sheet: {
     backgroundColor: Colors.base,
