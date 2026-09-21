@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
-import React, { useCallback } from 'react';
-import { Platform, View, Text, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import {
+  Platform, View, Text, ScrollView, StyleSheet, ActivityIndicator, AppState,
+} from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -20,6 +22,7 @@ import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 
 import { Colors } from './src/theme';
 import { useAuth } from './src/hooks/useAuth';
+import { drainSyncQueue } from './src/utils/syncWorkout';
 import LoginScreen         from './src/screens/LoginScreen';
 import SessionListScreen   from './src/screens/SessionListScreen';
 import SessionEditorScreen from './src/screens/SessionEditorScreen';
@@ -158,6 +161,29 @@ export default function App() {
     Inter_600SemiBold,
   });
 
+  // ── Drain the session outbox ────────────────────────────────────────────
+  //
+  // A finished session is persisted locally before it is sent (syncQueue.js),
+  // so anything that failed at the end of a workout is still here. Launch and
+  // returning to the foreground are the two moments worth retrying on: you
+  // finish in a basement gym with no signal, walk out, and open the app — that
+  // is when it goes up.
+  //
+  // Deliberately NOT a connectivity listener. @react-native-community/netinfo
+  // would drain a few seconds earlier at the cost of a native dependency and a
+  // prebuild; a finished session is not urgent, it only has to survive.
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    drainSyncQueue();
+    const sub = AppState.addEventListener('change', next => {
+      if (appState.current.match(/inactive|background/) && next === 'active') {
+        drainSyncQueue();
+      }
+      appState.current = next;
+    });
+    return () => sub.remove();
+  }, []);
+
   // A font that fails to load must not brick the app: render anyway and let the
   // system faces stand in. Waiting forever on a face is worse than an ugly one.
   if (!fontsLoaded && !fontError) {
@@ -173,7 +199,7 @@ export default function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider style={{ flex: 1 }}>
           <NavigationContainer>
-            <StatusBar style="light" backgroundColor={Colors.background} />
+            <StatusBar style="light" backgroundColor={Colors.base} />
             <AppNavigator />
           </NavigationContainer>
         </SafeAreaProvider>

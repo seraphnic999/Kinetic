@@ -22,6 +22,7 @@ import { useAuth, signOut } from '../hooks/useAuth';
 import { shareHistoryCsv } from '../utils/exportHistory';
 import { loadSessions } from '../utils/storage';
 import { getPrefs, setPref, DEFAULTS } from '../utils/prefs';
+import { pendingCount, drainSyncQueue } from '../utils/syncWorkout';
 
 function Row({ icon, label, value, onPress, tint = Colors.textMuted, children, last }) {
   const Wrap = onPress ? TouchableOpacity : View;
@@ -52,6 +53,8 @@ export default function YouScreen() {
 
   const [prefs, setPrefs] = useState(DEFAULTS);
   const [sessionCount, setSessionCount] = useState(null);
+  const [waiting, setWaiting] = useState(0);
+  const [pushing, setPushing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -59,12 +62,28 @@ export default function YouScreen() {
     let alive = true;
     getPrefs().then(p => { if (alive) setPrefs(p); });
     loadSessions().then(v => { if (alive) setSessionCount(v.length); });
+    pendingCount().then(n => { if (alive) setWaiting(n); });
     return () => { alive = false; };
   }, []));
 
   const update = async (key, value) => {
     setPrefs(p => ({ ...p, [key]: value }));
     await setPref(key, value);
+  };
+
+
+  const pushNow = async () => {
+    setPushing(true);
+    try {
+      const { left } = await drainSyncQueue();
+      setWaiting(left);
+      if (left > 0) {
+        Alert.alert('Still waiting',
+          `${left} session${left === 1 ? '' : 's'} could not be sent yet. They are saved on this device and will go up on their own — nothing is lost.`);
+      }
+    } finally {
+      setPushing(false);
+    }
   };
 
   const doExport = async () => {
@@ -136,6 +155,20 @@ export default function YouScreen() {
 
         <Text style={s.section}>Data</Text>
         <View style={s.card}>
+          {/* Only rendered when something is actually waiting. A permanent
+              "0 sessions pending" row is noise that trains you to ignore the
+              one time it says 1. */}
+          {waiting > 0 ? (
+            <Row
+              icon="cloudOffline"
+              label={`${waiting} session${waiting === 1 ? '' : 's'} waiting to sync`}
+              value="Saved on this device — tap to try now"
+              onPress={pushing ? undefined : pushNow}
+              tint={Colors.warn}
+            >
+              {pushing ? <ActivityIndicator color={Colors.warn} /> : null}
+            </Row>
+          ) : null}
           <Row
             icon="export"
             label="Export training history"
