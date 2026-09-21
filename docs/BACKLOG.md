@@ -169,6 +169,8 @@ Four defects found on device and fixed in the same release:
 Triaged on the published backlog; answers stored with the artifact.
 
 **Want (8)** · sync, atomic, lasttime, overload, plates, midadd, editlog, web
+**All eight are built.** Seven shipped to the phone in v16 and v17; the web
+dashboard is committed and waiting on a deploy.
 **Later (7)** · rest, notes, ramp, remind, tags→no, library, photos, wear
 **No (5)** · blocks, health, import, share, tags
 
@@ -216,7 +218,7 @@ suggestion is that you can tell in advance what it will say, and disagree.
 | 3 | `overload` | ~3d | **Shipped v16.** Hit-all-sets rule, tappable, says why when it declines |
 | 4 | `midadd` | ~3d | **Shipped v16.** Splices in before the cardio; changes today, not the template |
 | 5 | `editlog` | ~4d | **Shipped v17.** Came in under estimate: nothing stores a PR, so an edit recomputes everything with no invalidation |
-| 6 | `web` | ~8d | In progress. Separate codebase, no dependencies, and the only item that does not improve the phone |
+| 6 | `web` | ~3d | **Done, undeployed.** Console palette and faces, `computeHeadline` instead of the deprecated `computeStats`, and the query fixed to fold combo children |
 
 ≈4–5 weeks for mobile, ≈6–7 including web. The only hard dependency is 1 before
 2 and 5; the rest is grouping by which file you are already inside.
