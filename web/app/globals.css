@@ -2,11 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Console ground and ink (docs/DESIGN.md §2). Pure white was never in the
+   palette — `ink` is #F2F2F4, because white on near-black at body size is
+   harsher than it needs to be. */
 body {
-  background-color: #0D0D0D;
-  color: #FFFFFF;
+  background-color: #0F0F11;
+  color: #F2F2F4;
+}
+
+/* Numbers that can change are tabular everywhere, so a column of weights does
+   not shuffle sideways as it updates (§3.4). */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* The label voice: small, spaced, uppercase. Matches Typography.label. */
+.label {
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #1C1C1E; }
-::-webkit-scrollbar-thumb { background: #3A3A3D; border-radius: 3px; }
+::-webkit-scrollbar-track { background: #17171A; }
+::-webkit-scrollbar-thumb { background: #34343C; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #63636D; }

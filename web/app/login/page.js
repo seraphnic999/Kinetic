@@ -44,41 +44,38 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <span className="text-primary text-4xl">⚡</span>
-            <span className="text-4xl font-bold tracking-widest text-primary">KINETIC</span>
-          </div>
-          <p className="text-secondary text-sm">Your training companion</p>
+          <p className="font-display font-bold text-5xl tracking-wide text-ember mb-1">Kinetic</p>
+          <p className="text-muted text-sm">Training, measured.</p>
         </div>
 
         {/* Card */}
-        <div className="bg-surface rounded-2xl p-8">
-          <h2 className="text-xl font-semibold mb-6">{mode === 'login' ? 'Sign in' : 'Create account'}</h2>
+        <div className="bg-surface border border-line rounded-xl p-8">
+          <h2 className="font-display text-2xl font-semibold mb-6">{mode === 'login' ? 'Sign in' : 'Create account'}</h2>
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Email</label>
+              <label className="block text-xs text-muted mb-1 uppercase tracking-wider">Email</label>
               <input
                 type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full bg-raised rounded-lg px-4 h-12 text-white placeholder-muted outline-none focus:ring-2 focus:ring-primary"
+                className="w-full bg-raised rounded-lg px-4 h-12 text-ink placeholder-muted outline-none focus:ring-2 focus:ring-ember"
                 placeholder="you@example.com" autoComplete="email"
               />
             </div>
             <div>
-              <label className="block text-xs text-secondary mb-1 uppercase tracking-wider">Password</label>
+              <label className="block text-xs text-muted mb-1 uppercase tracking-wider">Password</label>
               <input
                 type="password" value={password} onChange={e => setPassword(e.target.value)}
-                className="w-full bg-raised rounded-lg px-4 h-12 text-white placeholder-muted outline-none focus:ring-2 focus:ring-primary"
+                className="w-full bg-raised rounded-lg px-4 h-12 text-ink placeholder-muted outline-none focus:ring-2 focus:ring-ember"
                 placeholder="••••••••" autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               />
             </div>
 
             {error && <p className="text-danger text-sm">{error}</p>}
-            {info  && <p className="text-primary text-sm">{info}</p>}
+            {info  && <p className="text-ember text-sm">{info}</p>}
 
             <button
               type="submit" disabled={loading}
-              className="w-full h-12 bg-primary text-bg font-bold rounded-full mt-2 hover:opacity-90 transition disabled:opacity-50"
+              className="w-full h-12 bg-ember text-bg font-bold rounded-full mt-2 hover:opacity-90 transition disabled:opacity-50"
             >
               {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Sign up'}
             </button>
@@ -86,10 +83,10 @@ export default function LoginPage() {
 
           <button
             onClick={() => { setMode(m => m === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }}
-            className="w-full text-center text-secondary text-sm mt-4 hover:text-white transition"
+            className="w-full text-center text-muted text-sm mt-4 hover:text-ink transition"
           >
             {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-            <span className="text-primary">{mode === 'login' ? 'Sign up' : 'Sign in'}</span>
+            <span className="text-ember">{mode === 'login' ? 'Sign up' : 'Sign in'}</span>
           </button>
         </div>
       </div>
