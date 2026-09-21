@@ -17,6 +17,7 @@ import { EmptyState } from '../components/States';
 import { formatTime } from '../utils/time';
 import { lbLabel } from '../utils/units';
 import { lastFor, getExerciseHistory, peekExerciseHistory } from '../utils/exerciseHistory';
+import { overloadSuggestion } from '../utils/overload';
 import { dayLabel } from '../utils/analytics';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
@@ -139,6 +140,22 @@ const getExerciseMeta = (ex, st) => {
   return '';
 };
 
+/**
+ * Splice mid-session additions in before the cardio.
+ *
+ * The app's convention everywhere else is warmup first, cardio last — the
+ * editor enforces it explicitly. An exercise added while training is lifting,
+ * so appending it blindly would put it after the treadmill, which is the one
+ * place it definitely does not belong.
+ */
+const withAdded = (base, added) => {
+  const rows = base ?? [];
+  if (!added?.length) return rows;
+  const firstCardio = rows.findIndex(e => e.type === EXERCISE_TYPES.INTERVALS);
+  const at = firstCardio === -1 ? rows.length : firstCardio;
+  return [...rows.slice(0, at), ...added, ...rows.slice(at)];
+};
+
 const initExerciseStates = (exercises) => {
   const s = {};
   (exercises ?? []).forEach(ex => {
@@ -187,15 +204,36 @@ const initExerciseStates = (exercises) => {
  * Renders nothing when there is no history: a first outing has nothing to beat,
  * and an empty "no previous data" row is noise on every new exercise.
  */
-function LastTime({ exerciseName }) {
+function LastTime({ exerciseName, targetReps, onTake }) {
   const prev = lastFor(exerciseName);
   if (!prev) return null;
+  const s = overloadSuggestion(prev, targetReps);
+
   return (
-    <View style={d.lastRow}>
-      <Icon name="history" size={IconSize.meta} color={Colors.textMuted} />
-      <Text style={d.lastLabel}>LAST</Text>
-      <Text style={d.lastValue}>{prev.weightKg} kg × {prev.reps}</Text>
-      <Text style={d.lastWhen}>{dayLabel(prev.dayKey)}</Text>
+    <View style={d.lastCard}>
+      <View style={d.lastRow}>
+        <Icon name="history" size={IconSize.meta} color={Colors.textMuted} />
+        <Text style={d.lastLabel}>LAST</Text>
+        <Text style={d.lastValue}>{prev.weightKg} kg × {prev.reps}</Text>
+        <Text style={d.lastWhen}>{dayLabel(prev.dayKey)}</Text>
+      </View>
+
+      {/* Ice, not ember: ember is the live action (SET DONE) and a suggestion
+          must not compete with it. This offers; it never sets by itself. */}
+      {s.suggest && onTake ? (
+        <TouchableOpacity style={d.suggestRow} onPress={() => onTake(s.weightKg)}
+                          activeOpacity={0.75} accessibilityRole="button"
+                          accessibilityLabel={`Use ${s.weightKg} kilograms — ${s.reason}`}>
+          <Icon name="trendUp" size={IconSize.meta} color={Colors.ice} />
+          <Text style={d.suggestValue}>try {s.weightKg} kg</Text>
+          <Text style={d.suggestWhy} numberOfLines={1}>{s.reason}</Text>
+          <Icon name="chevronRight" size={IconSize.pip} color={Colors.ice} />
+        </TouchableOpacity>
+      ) : s.reason ? (
+        // Say why there is no bump. "3 of 5 sets last time" is information;
+        // silence would read as the feature being broken.
+        <Text style={d.suggestWhyOnly}>{s.reason}</Text>
+      ) : null}
     </View>
   );
 }
@@ -217,7 +255,9 @@ function RegularDetail({ exercise, state, onUpdate }) {
         </Text>
       </View>
 
-      <LastTime exerciseName={getExerciseName(exercise)} />
+      <LastTime exerciseName={getExerciseName(exercise)}
+                targetReps={state.reps}
+                onTake={v => onUpdate({ weight: v })} />
 
       <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })} />
       <RepsField   value={state.reps}   onChange={v => onUpdate({ reps: v })} />
@@ -308,7 +348,8 @@ function ComboDetail({ exercise, state, onUpdate }) {
 
               {isOpen && (
                 <View style={d.stationBody}>
-                  <LastTime exerciseName={nm} />
+                  <LastTime exerciseName={nm} targetReps={r}
+                            onTake={v => setW(idx, v)} />
                   <WeightField value={w} onChange={v => setW(idx, v)} />
                   <RepsField   value={r} onChange={v => setR(idx, v)} />
                 </View>
@@ -493,10 +534,18 @@ const d = StyleSheet.create({
 
   progress:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
+  lastCard:    { backgroundColor: Colors.raised, borderRadius: Radius.md,
+                 borderWidth: 1, borderColor: Colors.line, overflow: 'hidden' },
   lastRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
-                 backgroundColor: Colors.raised, borderRadius: Radius.md,
-                 borderWidth: 1, borderColor: Colors.line,
                  paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  suggestRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+                 backgroundColor: Colors.iceDim, minHeight: Touch.min,
+                 borderTopWidth: 1, borderTopColor: Colors.line,
+                 paddingHorizontal: Spacing.md },
+  suggestValue:{ ...Typography.metric, color: Colors.ice },
+  suggestWhy:  { ...Typography.caption, color: Colors.textMuted, flex: 1, textAlign: 'right' },
+  suggestWhyOnly: { ...Typography.caption, color: Colors.textFaint,
+                    paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm },
   lastLabel:   { ...Typography.label, color: Colors.textFaint },
   lastValue:   { ...Typography.metric, color: Colors.text, flex: 1 },
   lastWhen:    { ...Typography.caption, color: Colors.textMuted },
@@ -599,7 +648,15 @@ function ExercisePicker({ value, onChange }) {
   );
 }
 
-// ─── Quick Add Modal (ad-hoc mode) ───────────────────────────────────────────
+/** The raw type values are database words; these are what people call them. */
+const QUICK_ADD_TITLE = {
+  [EXERCISE_TYPES.REGULAR]:   'Exercise',
+  [EXERCISE_TYPES.COMBO]:     'Combo',
+  [EXERCISE_TYPES.WARMUP]:    'Warmup',
+  [EXERCISE_TYPES.INTERVALS]: 'Cardio',
+};
+
+// ─── Quick Add Modal ───────────────────────────────────────────
 // Simplified exercise builder for adding exercises during an ad-hoc session.
 function QuickAddModal({ exercises, onAdd, onClose }) {
   const [step, setStep]     = useState('type');  // 'type' | 'form'
@@ -682,7 +739,9 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
           <TouchableOpacity onPress={step === 'form' ? () => setStep('type') : onClose} style={qam.backBtn}>
             <Icon name={step === 'form' ? 'back' : 'close'} size={IconSize.row} color={Colors.text} />
           </TouchableOpacity>
-          <Text style={qam.title}>{step === 'type' ? 'Add Exercise' : type}</Text>
+          <Text style={qam.title}>
+            {step === 'type' ? 'Add Exercise' : (QUICK_ADD_TITLE[type] ?? 'Add Exercise')}
+          </Text>
           <View style={{ width: 40 }} />
         </View>
 
@@ -879,10 +938,20 @@ export default function TrainingScreen({ navigation, route }) {
   const [adHocExercises, setAdHocExercises] = useState(sessionParam?.exercises ?? []);
   const [showQuickAdd,   setShowQuickAdd]   = useState(false);
 
-  // Computed session view (stable in normal mode, reactive in ad-hoc)
+  // Exercises added after the session started. A planned session could not
+  // gain one, so a busy squat rack meant going off-plan with no way to record
+  // what you actually did instead — the app quietly stopped matching the
+  // training. They live separately from the template: adding one here changes
+  // today, never the saved session.
+  const [addedExercises, setAddedExercises] = useState([]);
+
+  // Computed session view — reactive in both modes now.
   const session = adHoc
-    ? { id: sessionIdRef.current, name: sessionNameRef.current, exercises: adHocExercises, restTimerSecs: sessionParam?.restTimerSecs ?? 60 }
-    : sessionParam;
+    ? { id: sessionIdRef.current, name: sessionNameRef.current,
+        exercises: adHocExercises, restTimerSecs: sessionParam?.restTimerSecs ?? 60 }
+    : sessionParam
+      ? { ...sessionParam, exercises: withAdded(sessionParam.exercises, addedExercises) }
+      : sessionParam;
 
   // ── Timeline ─────────────────────────────────────────────────────────────
   const timelineRef = useRef([{ t: 0, action: 'session_start' }]);
@@ -926,14 +995,15 @@ export default function TrainingScreen({ navigation, route }) {
 
   // When exercises are added in ad-hoc mode, initialize state for the new ones
   const prevExerciseIds = useRef(new Set((session?.exercises ?? []).map(e => e.id)));
+  // Watches the composed list rather than the ad-hoc one, so an exercise added
+  // mid-session to a PLANNED session gets its state too.
+  const liveExercises = session?.exercises ?? [];
   useEffect(() => {
-    if (!adHoc) return;
-    const newExs = adHocExercises.filter(e => !prevExerciseIds.current.has(e.id));
+    const newExs = liveExercises.filter(e => !prevExerciseIds.current.has(e.id));
     if (!newExs.length) return;
     newExs.forEach(e => prevExerciseIds.current.add(e.id));
-    const newStates = initExerciseStates(newExs);
-    setExStates(prev => ({ ...prev, ...newStates }));
-  }, [adHocExercises, adHoc]);
+    setExStates(prev => ({ ...prev, ...initExerciseStates(newExs) }));
+  }, [liveExercises.length]);
 
   // Performance order
   const [perfOrder, setPerfOrder] = useState([]);
@@ -1569,8 +1639,8 @@ export default function TrainingScreen({ navigation, route }) {
         }}
       />
 
-      {/* Ad-hoc Quick Add */}
-      {adHoc && !restActive && (
+      {/* Add an exercise — in a planned session too, not just ad-hoc. */}
+      {!restActive && (
         <TouchableOpacity
           style={[styles.quickAddFab, { marginBottom: insets.bottom + Spacing.md }]}
           onPress={() => setShowQuickAdd(true)}
@@ -1643,7 +1713,11 @@ export default function TrainingScreen({ navigation, route }) {
       {showQuickAdd && (
         <QuickAddModal
           exercises={exercises}
-          onAdd={(ex) => { setAdHocExercises(prev => [...prev, ex]); setShowQuickAdd(false); }}
+          onAdd={(ex) => {
+            if (adHoc) setAdHocExercises(prev => [...prev, ex]);
+            else       setAddedExercises(prev => [...prev, ex]);
+            setShowQuickAdd(false);
+          }}
           onClose={() => setShowQuickAdd(false)}
         />
       )}

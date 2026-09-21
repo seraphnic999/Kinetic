@@ -276,6 +276,11 @@ export const sessionBestSets = (session) => {
         weightKg: parseFloat(e.weight_kg),
         reps: e.reps,
         e1rm: est,
+        // Carried so a caller can ask "did every planned set actually get
+        // done?" — which is the whole basis of the overload suggestion.
+        // Additive: nothing that already reads a best set is affected.
+        setsPlanned:   e.sets_planned ?? null,
+        setsCompleted: e.sets_completed ?? null,
       });
     }
   }

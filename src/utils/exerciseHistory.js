@@ -45,9 +45,9 @@ export const peekExerciseHistory = () => memo;
 
 /**
  * One entry, or null.
- * `{ weightKg, reps, e1rm, dayKey }` — the top set of the last session that
- * contained this exercise, not the last set. The heaviest is what you are
- * actually deciding against.
+ * `{ weightKg, reps, e1rm, dayKey, setsPlanned, setsCompleted }` — the top set
+ * of the last session that contained this exercise, not the last set. The
+ * heaviest is what you are actually deciding against.
  */
 export function lastFor(exerciseName) {
   if (!memo || !exerciseName) return null;
@@ -85,6 +85,8 @@ export async function refreshExerciseHistory() {
           reps:     b.reps,
           e1rm:     b.e1rm,
           dayKey:   d.dayKey,
+          setsPlanned:   b.setsPlanned ?? null,
+          setsCompleted: b.setsCompleted ?? null,
         };
       }
     }
