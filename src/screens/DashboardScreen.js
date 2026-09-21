@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import { Colors, Typography, Spacing, Radius, IconSize, Elevation } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation } from '../theme';
 import { Icon } from '../components/Icon';
 import { EmptyState, SkeletonList } from '../components/States';
 import { ChartCard, BarChart, LineChart } from '../components/Chart';
@@ -285,7 +285,7 @@ const STATUS = {
   partial:  ['statusPartial',  Colors.warn],
 };
 
-function SessionRow({ session, derived, expanded, onPress }) {
+function SessionRow({ session, derived, expanded, onPress, onOpen }) {
   return (
     <TouchableOpacity style={sr.card} onPress={onPress} activeOpacity={0.8}>
       <View style={sr.header}>
@@ -293,7 +293,7 @@ function SessionRow({ session, derived, expanded, onPress }) {
           <Text style={sr.name} numberOfLines={1}>{session.name}</Text>
           <Text style={sr.meta} numberOfLines={1}>
             {dayLabel(derived.dayKey)} · {fmtDur(derived.durationSecs)}
-            {derived.volumeKg > 0 ? ` · ${fmtVolume(derived.volumeKg)}kg` : ''}
+            {derived.volumeKg > 0 ? ` · ${fmtTonnes(derived.volumeKg)}` : ''}
             {derived.workSecs != null ? ` · ${fmtDur(derived.workSecs)} under load` : ''}
           </Text>
         </View>
@@ -326,6 +326,15 @@ function SessionRow({ session, derived, expanded, onPress }) {
               </View>
             );
           })}
+          {onOpen ? (
+            <TouchableOpacity style={sr.editBtn} onPress={onOpen} activeOpacity={0.75}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Open ${session.name} to correct it`}>
+              <Icon name="edit" size={IconSize.meta} color={Colors.ice} />
+              <Text style={sr.editTxt}>Correct this session</Text>
+              <Icon name="chevronRight" size={IconSize.pip} color={Colors.ice} />
+            </TouchableOpacity>
+          ) : null}
         </View>
       )}
     </TouchableOpacity>
@@ -339,6 +348,10 @@ const sr = StyleSheet.create({
   body:   { marginTop: Spacing.md, gap: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.line, paddingTop: Spacing.md },
   exRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   childRow:  { paddingLeft: Spacing.xl, marginTop: 4 },
+  editBtn:   { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+               marginTop: Spacing.sm, paddingTop: Spacing.sm, minHeight: Touch.min,
+               borderTopWidth: 1, borderTopColor: Colors.line },
+  editTxt:   { ...Typography.bodyMedium, color: Colors.ice, flex: 1 },
   exName:    { ...Typography.bodySmall, color: Colors.text },
   childName: { ...Typography.caption, color: Colors.textMuted },
   exSub:     { ...Typography.caption, color: Colors.warn },
@@ -548,6 +561,7 @@ export default function DashboardScreen({ navigation }) {
                       key={d.id} session={session} derived={d}
                       expanded={expanded === d.id}
                       onPress={() => setExpanded(x => (x === d.id ? null : d.id))}
+                      onOpen={() => navigation.navigate('SessionDetail', { sessionId: d.id })}
                     />
                   );
                 })}

@@ -31,6 +31,7 @@ import TrainingScreen      from './src/screens/TrainingScreen';
 import SummaryScreen       from './src/screens/SummaryScreen';
 import DashboardScreen     from './src/screens/DashboardScreen';
 import MetricsScreen       from './src/screens/MetricsScreen';
+import SessionDetailScreen from './src/screens/SessionDetailScreen';
 import DevIconsScreen      from './src/screens/DevIconsScreen';
 import YouScreen           from './src/screens/YouScreen';
 import ExerciseDetailScreen from './src/screens/ExerciseDetailScreen';
@@ -142,6 +143,7 @@ function AppNavigator() {
       <Stack.Screen name="Summary"       component={SummaryScreen} />
       <Stack.Screen name="SessionEditor" component={SessionEditorScreen} />
       <Stack.Screen name="ExerciseDetail" component={ExerciseDetailScreen} />
+      <Stack.Screen name="SessionDetail"  component={SessionDetailScreen} />
       {/* Linked from nowhere — long-press the "Kinetic" wordmark to reach it. */}
       <Stack.Screen name="DevIcons"      component={DevIconsScreen} />
     </Stack.Navigator>
