@@ -164,6 +164,65 @@ Four defects found on device and fixed in the same release:
 
 ---
 
+# Part 1.5 — Decided, 2026-09-21
+
+Triaged on the published backlog; answers stored with the artifact.
+
+**Want (8)** · sync, atomic, lasttime, overload, plates, midadd, editlog, web
+**Later (7)** · rest, notes, ramp, remind, tags→no, library, photos, wear
+**No (5)** · blocks, health, import, share, tags
+
+## Two product positions this settles
+
+**Kinetic is a logger, not a planner.** Programme blocks (PPL rotations, 5/3/1)
+and template tags were both rejected. Those were the two items that would have
+moved the app toward planning training rather than recording it. Treat this as
+closing the category, not just the two items — proposals of the shape "the app
+tells you what to train" are out until this is explicitly reopened.
+
+**Configuration before a session matters less than flexibility during one.**
+Per-exercise rest was the only P1 deferred, while add-an-exercise-mid-session
+was taken. Plan loosely, adapt in the room.
+
+## Two estimates in Part 2 were wrong
+
+Checked against the code rather than trusted:
+
+- **`plates` is not S as originally specified.** There is no equipment field on
+  exercises — §12.3 settled body-section *glyphs*, not a data field — so the app
+  cannot distinguish a barbell bench press from a 65 kg lat pulldown, and a
+  plate breakdown on a machine is nonsense. **Decided: tap to show.** A small
+  affordance in the set sheet, invoked when it is a barbell, which never
+  guesses wrong and needs no new field. Stays S.
+- **`lasttime` is not S either.** `TrainingScreen` makes **no network calls at
+  all**, deliberately — a basement gym has no signal. Reading history therefore
+  needs a locally cached last-performance map refreshed when connectivity
+  exists, not a query. That is M, roughly half of it the cache — and it is the
+  same local-persist-then-reconcile machinery the sync queue needs, which is
+  why sync goes first.
+
+## The overload rule
+
+**Hit every planned set at target reps last time → suggest +2.5 kg.**
+Predictable and explainable, which an e1RM-trend rule is not: the value of a
+suggestion is that you can tell in advance what it will say, and disagree.
+
+## Order
+
+| # | Work | Size | Why here |
+|---|---|---|---|
+| 1 | `sync` + `atomic` | ~4d | Same file, same concern. Establishes local-persist-then-reconcile, which 2 and 5 both reuse |
+| 2 | `lasttime` + `plates` | ~3d | One pass through the set sheet; lasttime reads the cache 1 built |
+| 3 | `overload` | ~3d | Needs lasttime's data plumbing; do it while still in that code |
+| 4 | `midadd` | ~3d | Independent and self-contained |
+| 5 | `editlog` | ~8d | Wants 1's durable write path rather than a retrofit |
+| 6 | `web` | ~8d | Separate codebase, no dependencies, and the only item that does not improve the phone |
+
+≈4–5 weeks for mobile, ≈6–7 including web. The only hard dependency is 1 before
+2 and 5; the rest is grouping by which file you are already inside.
+
+---
+
 # Part 2 — Proposed next
 
 **Priority.** P0 reliability or correctness, do before features · P1 high value,

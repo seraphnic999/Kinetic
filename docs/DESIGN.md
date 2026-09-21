@@ -1144,6 +1144,15 @@ Stated so they do not creep in:
 - Rest-timer auto-start per exercise, supersets as a first-class type, plate
   calculators, RPE/RIR logging, 1RM testing protocols, programme templates
   (5/3/1, PPL), exercise demonstration media, social/sharing.
+- **Kinetic is a logger, not a planner** — settled 2026-09-21 in
+  `BACKLOG.md`, where programme blocks and template tags were both rejected
+  outright rather than deferred. That closes the category, not just those two:
+  anything of the shape *the app tells you what to train* is out until this is
+  explicitly reopened. Recording what you did, and showing it back to you at
+  the moment you decide the next set, is the whole job.
+- Plate calculators are partially reopened: a **tap-to-show** breakdown in the
+  set sheet is in (`BACKLOG.md` item 2), because it needs no equipment field
+  and cannot guess wrong. Automatic per-exercise plate maths stays out.
 - Apple Health / Google Fit / wearable import.
 - Rewriting the web dashboard. It consumes `shared/analytics.js` and gets the
   corrected numbers for free; its visual redesign is a separate document.
