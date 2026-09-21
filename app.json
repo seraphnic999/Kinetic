@@ -30,6 +30,7 @@
     },
     "plugins": [
       "./plugins/fixFoojay",
+      "./plugins/fixSplash",
       [
         "expo-audio",
         {

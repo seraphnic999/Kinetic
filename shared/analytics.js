@@ -388,6 +388,8 @@ export function sessionFromSummary(summary) {
  *
  * `history` is every OTHER derived session; the caller filters this one out by
  * id so a session cannot set a record against itself.
+ *
+ * Returns only genuine improvements, sorted by how much was gained.
  */
 export function computeSessionPRs(session, history) {
   const best = new Map();
@@ -403,16 +405,15 @@ export function computeSessionPRs(session, history) {
   for (const b of session?.bestSets ?? []) {
     if (b.e1rm == null) continue;
     const prev = best.get(b.exercise);
-    if (!prev) {
-      // First time on record counts, but it is labelled differently: there is
-      // no "+2.5 since" to quote when there is nothing to compare against.
-      prs.push({ ...b, gain: null, sinceDay: null, first: true });
-    } else if (b.e1rm > prev.e1rm) {
+    // A first appearance is NOT a record. Counting it as one would make every
+    // exercise in your first ever session a PR — "8 PRs" on day one, and a
+    // number nobody believes again afterwards. A record needs something beaten.
+    if (prev && b.e1rm > prev.e1rm) {
       prs.push({ ...b, gain: Math.round((b.e1rm - prev.e1rm) * 10) / 10,
-                 sinceDay: prev.dayKey, first: false });
+                 sinceDay: prev.dayKey });
     }
   }
-  return prs.sort((a, b) => (b.gain ?? Infinity) - (a.gain ?? Infinity));
+  return prs.sort((a, b) => b.gain - a.gain);
 }
 
 

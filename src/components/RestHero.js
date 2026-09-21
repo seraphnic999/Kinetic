@@ -14,7 +14,9 @@
  * when you decide whether the next set is the one you add weight to.
  */
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Animated, Easing, useWindowDimensions,
+} from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { Colors, Typography, Spacing, Radius, IconSize, Touch } from '../theme';
 import { Icon } from './Icon';
@@ -22,12 +24,19 @@ import { formatTime } from '../utils/time';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const RING = 210;      // svg viewport, square
 const STROKE = 10;
-const R = (RING - STROKE) / 2;
-const C = 2 * Math.PI * R;
+/** Cap, not a constant: the whole hero must still fit the top third (§7.2b). */
+const RING_MAX = 200;
 
 export function RestHero({ secsLeft, totalSecs, nextLabel, nextSub, nextIcon, onSkip }) {
+  const { height: screenH } = useWindowDimensions();
+  // The ring plus its label, the next block and the skip button have to live
+  // inside roughly a third of the screen, so the ring takes its share of that
+  // rather than a fixed size that overruns short phones.
+  const RING = Math.round(Math.min(RING_MAX, screenH * 0.21));
+  const R = (RING - STROKE) / 2;
+  const C = 2 * Math.PI * R;
+
   const total = Math.max(1, totalSecs || 1);
   // Drain, not fill: the ring empties as the rest runs out, so "nearly gone"
   // is a nearly-empty ring rather than a nearly-full one.
@@ -52,7 +61,7 @@ export function RestHero({ secsLeft, totalSecs, nextLabel, nextSub, nextIcon, on
 
   return (
     <View style={s.wrap}>
-      <View style={s.ringWrap}>
+      <View style={[s.ringWrap, { width: RING, height: RING }]}>
         <Svg width={RING} height={RING}>
           <Circle
             cx={RING / 2} cy={RING / 2} r={R}
@@ -71,7 +80,9 @@ export function RestHero({ secsLeft, totalSecs, nextLabel, nextSub, nextIcon, on
 
         <View style={s.ringCentre} pointerEvents="none">
           <Text style={s.label}>REST</Text>
-          <Text style={[s.digits, { color: tone }]}>{formatTime(Math.max(0, secsLeft))}</Text>
+          <Text style={[s.digits, { color: tone, fontSize: Math.round(RING * 0.34) }]}>
+            {formatTime(Math.max(0, secsLeft))}
+          </Text>
         </View>
       </View>
 
@@ -98,7 +109,7 @@ export function RestHero({ secsLeft, totalSecs, nextLabel, nextSub, nextIcon, on
 const s = StyleSheet.create({
   wrap: { alignItems: 'center', paddingVertical: Spacing.lg, gap: Spacing.md },
 
-  ringWrap:   { width: RING, height: RING, alignItems: 'center', justifyContent: 'center' },
+  ringWrap:   { alignItems: 'center', justifyContent: 'center' },
   ringCentre: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
 
   label:  { ...Typography.label, color: Colors.textFaint, marginBottom: Spacing.xs },

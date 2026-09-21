@@ -219,7 +219,10 @@ export default function SessionListScreen({ navigation }) {
   };
 
   // ─── Hero ─────────────────────────────────────────────────────────────────
-  const Hero = () => {
+  // Returns ELEMENTS, and is called rather than mounted. Passed as a
+  // component, a closure defined here is a new type each render, so the
+  // hero would remount on every keystroke of the refresh.
+  const renderHero = () => {
     if (!nextUp) return null;
     const areas = getBodyAreas(nextUp.exercises);
     return (
@@ -281,7 +284,7 @@ export default function SessionListScreen({ navigation }) {
           data={rest}
           keyExtractor={item => item.id}
           renderItem={renderRow}
-          ListHeaderComponent={Hero}
+          ListHeaderComponent={renderHero()}
           contentContainerStyle={[s.list, { paddingBottom: insets.bottom + 120 }]}
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}

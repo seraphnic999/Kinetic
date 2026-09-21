@@ -14,7 +14,7 @@
  * The drag only ever moves the sheet DOWN (`dy > 0`). Letting it travel up
  * would detach it from the bottom of the screen and show the scrim underneath.
  */
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, Modal, Animated, PanResponder,
   TouchableWithoutFeedback, TouchableOpacity, useWindowDimensions,
@@ -50,12 +50,20 @@ export function Sheet({
   // the open/close animation.
   const drag = useRef(new Animated.Value(0)).current;
 
+  // `Modal` unmounts the instant its `visible` goes false, which would skip the
+  // exit animation entirely — the sheet would vanish rather than slide out.
+  // So the Modal follows `mounted`, which lags `visible` by the animation.
+  const [mounted, setMounted] = useState(visible);
+
   useEffect(() => {
+    if (visible) setMounted(true);
     Animated.timing(anim, {
       toValue: visible ? 1 : 0,
       duration: visible ? Motion.sheetIn : Motion.sheetOut,
       useNativeDriver: true,
-    }).start();
+    }).start(({ finished }) => {
+      if (finished && !visible) setMounted(false);
+    });
     if (visible) drag.setValue(0);
   }, [visible, anim, drag]);
 
@@ -93,7 +101,7 @@ export function Sheet({
   );
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={close}
+    <Modal visible={mounted} transparent animationType="none" onRequestClose={close}
            statusBarTranslucent>
       <View style={st.fill}>
         <TouchableWithoutFeedback onPress={close} accessible={false}>

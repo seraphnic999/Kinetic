@@ -756,6 +756,34 @@ const qam = StyleSheet.create({
   confirmTxt:  { ...Typography.h3, color: Colors.base },
 });
 
+// ─── The fixed action bar at the foot of the set sheet (§7.2) ─────────────────
+// Module scope on purpose: defined inside the render these get a fresh
+// component type every pass, so the bar unmounts and remounts once a second
+// while the "under load" counter ticks — and a press landing on that frame is
+// dropped.
+function Bar({ onPress, icon, label, tone = Colors.ember, sub }) {
+  return (
+    <TouchableOpacity style={[styles.setBar, { backgroundColor: tone }]}
+                      onPress={onPress} activeOpacity={0.85}
+                      accessibilityRole="button" accessibilityLabel={label}>
+      <Icon name={icon} size={IconSize.tab} color={onAccent} />
+      <View>
+        <Text style={styles.setBarTxt}>{label}</Text>
+        {sub ? <Text style={styles.setBarSub}>{sub}</Text> : null}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function DoneBar({ label }) {
+  return (
+    <View style={[styles.setBar, styles.setBarDone]}>
+      <Icon name="statusComplete" size={IconSize.tab} color={Colors.gold} />
+      <Text style={[styles.setBarTxt, { color: Colors.gold }]}>{label}</Text>
+    </View>
+  );
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function TrainingScreen({ navigation, route }) {
   useKeepAwake();
@@ -1332,25 +1360,6 @@ export default function TrainingScreen({ navigation, route }) {
   const renderSheetFooter = () => {
     if (!selectedEx || !selectedState) return null;
     const type = selectedEx.type;
-
-    const Bar = ({ onPress, icon, label, tone = Colors.ember, sub }) => (
-      <TouchableOpacity style={[styles.setBar, { backgroundColor: tone }]}
-                        onPress={onPress} activeOpacity={0.85}
-                        accessibilityRole="button" accessibilityLabel={label}>
-        <Icon name={icon} size={IconSize.tab} color={onAccent} />
-        <View>
-          <Text style={styles.setBarTxt}>{label}</Text>
-          {sub ? <Text style={styles.setBarSub}>{sub}</Text> : null}
-        </View>
-      </TouchableOpacity>
-    );
-
-    const DoneBar = ({ label }) => (
-      <View style={[styles.setBar, styles.setBarDone]}>
-        <Icon name="statusComplete" size={IconSize.tab} color={Colors.gold} />
-        <Text style={[styles.setBarTxt, { color: Colors.gold }]}>{label}</Text>
-      </View>
-    );
 
     if (type === EXERCISE_TYPES.REGULAR || type === EXERCISE_TYPES.COMBO) {
       const isCombo = type === EXERCISE_TYPES.COMBO;

@@ -976,6 +976,15 @@ Currently duplicated across four screens each:
 - **`Sheet`** — bottom sheet with a grabber, used by set detail, quick add,
   pickers, account.
 - **`StatTile`** — value + label + window + delta, the §5.5 shape.
+
+  **Built once, on the dashboard, and deliberately not shared with Summary.**
+  The two look like the same object and are not: the dashboard's tile is
+  label-first, because four of them side by side read as a table you compare
+  down; Summary's is value-first, because three of them are a headline you
+  read across. `tone` means a delta direction on one and an ink colour on the
+  other. Merging them produced one component with two layouts and two meanings
+  for the same prop — worse than two short ones that are each clear. Shared
+  tokens already give them a common look; that was the actual goal.
 - **`Chart`** — one svg chart component with bar/line/area modes, gridlines and
   a scrubber, replacing two hand-rolled implementations on mobile.
 - **`Stepper`** — the §7.2 version, replacing the current one.
@@ -1028,6 +1037,21 @@ Three adjustments:
 
 - **Splash** re-cut on `base #0F0F11` rather than `#0D0D0D`, so the launch does
   not step one value when the first screen paints.
+
+  **Shipping this turned up something worse than the one-value step.**
+  `expo-splash-screen` is not a dependency, so the legacy `expo.splash` block
+  was only half honoured: prebuild composited the logo onto **white** and
+  pointed `android:windowBackground` straight at that bitmap, which Android
+  then stretches to fill. Every launch since v11 has been a white screen with
+  a distorted mark on it — the most visible frame in the whole launch, on an
+  app that is otherwise near-black. Re-grounding the source art did nothing,
+  because the generator never read it.
+
+  Fixed in `plugins/fixSplash.js` — a layer-list with a solid ground and the
+  logo centred and un-scaled, plus `splashscreen_background` pointed at base.
+  It is a config plugin rather than a hand patch because `prebuild --clean`
+  wipes `android/`. If `expo-splash-screen` is ever added, delete the plugin:
+  that package owns the splash properly, Android 12 splash API included.
 - **Notification icon** — Android needs a monochrome silhouette;
   `android-icon-monochrome.png` exists but is not wired into the
   `expo-notifications` plugin config, so timer notifications currently show a
@@ -1068,6 +1092,8 @@ What stages 6 and 7 changed, beyond the table above:
   `shared/analytics.js` like every other surface. `sessionFromSummary()` maps a
   just-finished local session onto the shape the engine consumes, mirroring
   `syncWorkout`'s row mapping so a session and its own history cannot disagree.
+- **The splash had been white, not merely a shade off.** See §9 — the fix in
+  the rollout table understates it, because the defect did too.
 - **Two §3.1 violations found and fixed.** The editor set its rest-timer hints
   in DSEG7, which is reserved for live countdowns. Same class of bug as the
   login wordmark in v11 — a static value in a face that has no business

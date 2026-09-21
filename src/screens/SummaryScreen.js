@@ -301,9 +301,7 @@ export default function SummaryScreen({ navigation, route }) {
                 <View style={{ alignItems: 'flex-end' }}>
                   <Text style={s.prE1rm}>{p.e1rm} kg</Text>
                   <Text style={s.prShadow}>{lbLabel(p.e1rm)}</Text>
-                  <Text style={s.prGain}>
-                    {p.first ? 'first on record' : `+${p.gain} since ${dayLabel(p.sinceDay)}`}
-                  </Text>
+                  <Text style={s.prGain}>+{p.gain} since {dayLabel(p.sinceDay)}</Text>
                 </View>
               </View>
             ))}
