@@ -4,16 +4,17 @@ Glyphs that landed but need redrawing. Collected as they were found so they can
 go back to the generator in one or two batches at the end, rather than
 interrupting the run.
 
-**Status: 99 of 100 installed. 13 need a redraw. 1 is blocked.**
+**Status: 100 of 100 installed. 14 want a redraw. Nothing is blocked.**
 
-All thirteen redraws plus the blocked glyph are written as ready-to-paste
-prompts:
+`statusComplete` is no longer outstanding — it was authored by hand
+(`mktick.py`) because its source used three `<mask>` elements and the generator
+cannot fold a mask into a single path. `99-corrections-solid.txt` is therefore
+spent; ignore it.
 
-- `icon-prompts/99-corrections.txt` — the 13 line glyphs
-- `icon-prompts/99-corrections-solid.txt` — `statusComplete`, which is solid
-
-Everything listed here is currently **in the app** except `statusComplete`, so
-none of it blocks progress — the wrong glyph is visible rather than absent.
+The remaining redraws are written as ready-to-paste prompts in
+`icon-prompts/99-corrections.txt`. Every one of them is currently **in the
+app**, so none of this blocks anything — the wrong glyph is visible rather than
+absent, and the app ships and works with all fourteen as they are.
 
 ---
 
@@ -64,6 +65,7 @@ Recorded here so they are not re-reported.
 | `bodyProfile` | 10-metrics | A stick figure | Off-style: every other figure in the set has a real body outline |
 | `diet` | 10-metrics | A circle split down the middle | Reads as a contrast symbol, not a plate |
 | `emptyMetrics` | 13-empty | Identical to `scale` | The display is not visibly empty, so the two glyphs cannot be told apart |
+| `emptySessions` | 13-empty | Two detached bracket strokes | Found on device at 72px in the editor's empty state — it does not resolve into an object at all, it reads as two stray marks |
 
 Everything else in those three batches landed clean: `scale`, `ruler`, all four
 other `empty*`, and the whole 10-glyph account family first time.
