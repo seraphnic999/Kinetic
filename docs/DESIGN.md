@@ -1101,6 +1101,20 @@ What stages 6 and 7 changed, beyond the table above:
 - **Four icons were being drawn in `textFaint`,** which theme.js forbids in
   as many words: at 1.5u on this ground the set disappears.
 
+**One platform note worth keeping.** `StyleSheet.absoluteFill` and
+`StyleSheet.absoluteFillObject` do not exist in react-native 0.85 — they read
+as `undefined`. Spreading one into a style silently yields a view with no
+position and no size; passing one as `style` passes nothing. There is no error
+and no warning, so the failure looks like a layout mistake rather than a
+missing API. It cost three bugs here: two backdrops that never dimmed and a
+countdown laid out below its own ring. Every overlay in this app now writes
+`position: 'absolute'` and its four offsets longhand. **Do not reintroduce
+either helper.**
+
+Both backdrops additionally moved to the pattern that demonstrably works on
+this platform: a `Modal` whose ROOT view carries the scrim colour, rather than
+an absolutely-positioned overlay inside the screen.
+
 Known gaps at v14:
 
 - **Combo weight entry is a compact stepper pair, not the full plate-math
