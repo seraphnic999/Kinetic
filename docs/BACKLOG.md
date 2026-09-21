@@ -215,8 +215,8 @@ suggestion is that you can tell in advance what it will say, and disagree.
 | 2 | `lasttime` + `plates` | ~3d | **Shipped v16.** Local last-performance cache; tap-to-show plate breakdown |
 | 3 | `overload` | ~3d | **Shipped v16.** Hit-all-sets rule, tappable, says why when it declines |
 | 4 | `midadd` | ~3d | **Shipped v16.** Splices in before the cardio; changes today, not the template |
-| 5 | `editlog` | ~8d | Next. Wants 1's durable write path rather than a retrofit |
-| 6 | `web` | ~8d | Separate codebase, no dependencies, and the only item that does not improve the phone |
+| 5 | `editlog` | ~4d | **Shipped v17.** Came in under estimate: nothing stores a PR, so an edit recomputes everything with no invalidation |
+| 6 | `web` | ~8d | In progress. Separate codebase, no dependencies, and the only item that does not improve the phone |
 
 ≈4–5 weeks for mobile, ≈6–7 including web. The only hard dependency is 1 before
 2 and 5; the rest is grouping by which file you are already inside.
