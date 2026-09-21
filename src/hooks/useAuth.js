@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../config/supabase';
 import { syncSessions, clearSessionCache } from '../utils/storage';
+import { clearExerciseHistory } from '../utils/exerciseHistory';
 
 /**
  * Returns { session, loading }.
@@ -40,6 +41,9 @@ export function useAuth() {
 export async function signOut() {
   try { await syncSessions(); } catch { /* best effort */ }
   await clearSessionCache();
+  // A cache of the previous account's lifts must not greet the next person
+  // with "last time: 120 kg" for a lift they have never done.
+  await clearExerciseHistory();
   try {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;

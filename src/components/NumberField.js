@@ -21,6 +21,7 @@ import {
 import { Colors, Typography, Spacing, Radius, IconSize, Touch, onAccent } from '../theme';
 import { Icon } from './Icon';
 import { lbLabel } from '../utils/units';
+import { platesFor, perSideLabel } from '../utils/plates';
 
 /** Trailing zeros are noise on a weight: 80, not 80.0 — but 82.5 stays 82.5. */
 const fmt = (n) => {
@@ -33,7 +34,7 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 /** Shared frame: label, ± flanking a tappable value, chips beneath. */
 function Field({
   label, value, onChange, min, max, step, chips, unit, shadow, disabled,
-  keyboard = 'numeric', hint = false,
+  keyboard = 'numeric', hint = false, footer = null,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -124,12 +125,60 @@ function Field({
       ) : null}
 
       {hint ? <Text style={s.hint}>tap the value to type</Text> : null}
+      {footer}
+    </View>
+  );
+}
+
+/**
+ * What to hang on each side, on request.
+ *
+ * Tapped rather than automatic: there is no equipment field, so the app cannot
+ * tell a barbell from a machine, and plate maths under a 65 kg lat pulldown
+ * would be confidently wrong. You ask for it on the lift where it means
+ * something, and it is never wrong about the lift where it does not.
+ */
+function PlateBreakdown({ value }) {
+  const [open, setOpen] = useState(false);
+  const r = platesFor(value);
+
+  return (
+    <View style={s.plateWrap}>
+      <TouchableOpacity
+        style={s.plateToggle}
+        onPress={() => setOpen(o => !o)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={open ? 'Hide plate breakdown' : 'Show plate breakdown'}
+      >
+        <Icon name="plate" size={IconSize.meta} color={Colors.textMuted} />
+        <Text style={s.plateToggleTxt}>plates</Text>
+        <Icon name={open ? 'chevronUp' : 'chevronDown'} size={IconSize.pip} color={Colors.textMuted} />
+      </TouchableOpacity>
+
+      {open ? (
+        <View style={s.plateBody}>
+          {r.perSide.length ? (
+            <>
+              <Text style={s.plateList}>{perSideLabel(r.perSide)}</Text>
+              <Text style={s.plateNote}>
+                per side · {r.barKg} kg bar
+                {r.ok ? '' : ` · ${r.shortfallKg} kg short, loads ${r.loadedKg}`}
+              </Text>
+            </>
+          ) : (
+            <Text style={s.plateNote}>
+              {r.reason ?? `cannot be made from the rack — ${r.shortfallKg} kg short`}
+            </Text>
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 /** Plate-math weight. 2.5 kg is one pair of the smallest plates on the rack. */
-export function WeightField({ value, onChange, disabled, label = 'WEIGHT' }) {
+export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plates = true }) {
   return (
     <Field
       label={label}
@@ -143,6 +192,7 @@ export function WeightField({ value, onChange, disabled, label = 'WEIGHT' }) {
       shadow
       hint
       disabled={disabled}
+      footer={plates ? <PlateBreakdown value={value} /> : null}
     />
   );
 }
@@ -206,4 +256,16 @@ const s = StyleSheet.create({
   chipTxt: { ...Typography.bodyMedium, color: Colors.text, fontVariant: ['tabular-nums'] },
 
   hint: { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
+
+  plateWrap:   { alignItems: 'center' },
+  plateToggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
+                 paddingVertical: Spacing.xs, paddingHorizontal: Spacing.md,
+                 minHeight: Touch.min },
+  plateToggleTxt: { ...Typography.label, color: Colors.textMuted },
+  plateBody:   { alignItems: 'center', alignSelf: 'stretch',
+                 backgroundColor: Colors.raised, borderRadius: Radius.sm,
+                 borderWidth: 1, borderColor: Colors.line,
+                 paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, gap: 2 },
+  plateList:   { ...Typography.metric, color: Colors.text, fontVariant: ['tabular-nums'] },
+  plateNote:   { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
 });

@@ -16,6 +16,8 @@ import { RestHero } from '../components/RestHero';
 import { EmptyState } from '../components/States';
 import { formatTime } from '../utils/time';
 import { lbLabel } from '../utils/units';
+import { lastFor, getExerciseHistory, peekExerciseHistory } from '../utils/exerciseHistory';
+import { dayLabel } from '../utils/analytics';
 import { initAudio, loadSounds, unloadSounds, playRestBeep, playIntervalBeep, playCompleteSound } from '../utils/sounds';
 import { requestNotificationPermissions, scheduleTimerNotification, cancelTimerNotification, cancelAllTimerNotifications } from '../utils/notifications';
 import { syncWorkout } from '../utils/syncWorkout';
@@ -174,6 +176,30 @@ const initExerciseStates = (exercises) => {
   return s;
 };
 
+/**
+ * What you did last time, at the moment you decide what to do now.
+ *
+ * Progressive overload is a memory problem. The app has held this number since
+ * the first build and has never shown it on the one screen where the decision
+ * is actually made — you were choosing a weight from memory while the device
+ * in your hand knew the answer.
+ *
+ * Renders nothing when there is no history: a first outing has nothing to beat,
+ * and an empty "no previous data" row is noise on every new exercise.
+ */
+function LastTime({ exerciseName }) {
+  const prev = lastFor(exerciseName);
+  if (!prev) return null;
+  return (
+    <View style={d.lastRow}>
+      <Icon name="history" size={IconSize.meta} color={Colors.textMuted} />
+      <Text style={d.lastLabel}>LAST</Text>
+      <Text style={d.lastValue}>{prev.weightKg} kg × {prev.reps}</Text>
+      <Text style={d.lastWhen}>{dayLabel(prev.dayKey)}</Text>
+    </View>
+  );
+}
+
 // ─── Regular exercise detail ───────────────────────────────────────────────────
 // Sheet BODY only. The header (name, body part, close chevron) belongs to the
 // Sheet, and the action lives in a fixed footer bar — see `renderSheetFooter`.
@@ -190,6 +216,8 @@ function RegularDetail({ exercise, state, onUpdate }) {
           {done} of {total} {total === 1 ? 'set' : 'sets'}
         </Text>
       </View>
+
+      <LastTime exerciseName={getExerciseName(exercise)} />
 
       <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })} />
       <RepsField   value={state.reps}   onChange={v => onUpdate({ reps: v })} />
@@ -280,6 +308,7 @@ function ComboDetail({ exercise, state, onUpdate }) {
 
               {isOpen && (
                 <View style={d.stationBody}>
+                  <LastTime exerciseName={nm} />
                   <WeightField value={w} onChange={v => setW(idx, v)} />
                   <RepsField   value={r} onChange={v => setR(idx, v)} />
                 </View>
@@ -463,6 +492,14 @@ const d = StyleSheet.create({
   body:        { padding: Spacing.lg, gap: Spacing.xl },
 
   progress:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+
+  lastRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
+                 backgroundColor: Colors.raised, borderRadius: Radius.md,
+                 borderWidth: 1, borderColor: Colors.line,
+                 paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm },
+  lastLabel:   { ...Typography.label, color: Colors.textFaint },
+  lastValue:   { ...Typography.metric, color: Colors.text, flex: 1 },
+  lastWhen:    { ...Typography.caption, color: Colors.textMuted },
   progressTxt: { ...Typography.label, color: Colors.textMuted },
 
   adjustRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -945,6 +982,16 @@ export default function TrainingScreen({ navigation, route }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [startTime]);
+
+  // The cache is normally warm already (App.js loads it at launch). This is
+  // the cold path — a session started before that finished — and it only
+  // triggers one re-render, so LastTime appears rather than staying blank.
+  const [, setHistReady] = useState(() => !!peekExerciseHistory());
+  useEffect(() => {
+    let alive = true;
+    getExerciseHistory().then(() => { if (alive) setHistReady(true); });
+    return () => { alive = false; };
+  }, []);
 
   // ─── Set-in-progress tick ────────────────────────────────────────────────
   // Seeded on start, not on mount: the footer used to compute elapsed against

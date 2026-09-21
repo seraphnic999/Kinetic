@@ -23,6 +23,7 @@ import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Colors } from './src/theme';
 import { useAuth } from './src/hooks/useAuth';
 import { drainSyncQueue } from './src/utils/syncWorkout';
+import { getExerciseHistory, refreshExerciseHistory } from './src/utils/exerciseHistory';
 import LoginScreen         from './src/screens/LoginScreen';
 import SessionListScreen   from './src/screens/SessionListScreen';
 import SessionEditorScreen from './src/screens/SessionEditorScreen';
@@ -174,11 +175,19 @@ export default function App() {
   // prebuild; a finished session is not urgent, it only has to survive.
   const appState = useRef(AppState.currentState);
   useEffect(() => {
-    drainSyncQueue();
+    // Warm the last-performance cache from disk first so the training screen
+    // can read it synchronously, then refresh it from the server. The refresh
+    // runs after the drain, so a session that just went up is reflected in
+    // what "last time" says.
+    const catchUp = async () => {
+      await getExerciseHistory();
+      await drainSyncQueue();
+      await refreshExerciseHistory();
+    };
+    catchUp();
+
     const sub = AppState.addEventListener('change', next => {
-      if (appState.current.match(/inactive|background/) && next === 'active') {
-        drainSyncQueue();
-      }
+      if (appState.current.match(/inactive|background/) && next === 'active') catchUp();
       appState.current = next;
     });
     return () => sub.remove();
