@@ -19,10 +19,11 @@
 // call sites, which is why nothing on a screen read as a signal.
 //
 // ── MIGRATION ──────────────────────────────────────────────────────────────
-// The LEGACY block at the bottom keeps every old token name alive as an alias
-// so no screen has to be migrated twice. Screens move onto the new names stage
-// by stage (docs/DESIGN.md §10); the aliases are deleted at stage 7.
-// Do not add new call sites for anything in the LEGACY block.
+// There is no legacy alias block any more. It existed for the length of the
+// rollout so no screen had to be migrated twice; every screen is now on these
+// names and the aliases were deleted at stage 7 (docs/DESIGN.md §10). If a
+// build error names `Colors.primary`, `Colors.textPrimary`, `Shadows` or
+// `DIGITAL_FONT`, it is a call site that never migrated — fix the call site.
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── Type faces ─────────────────────────────────────────────────────────────
@@ -198,50 +199,3 @@ export const Motion = {
 
 /** Backdrop behind a bottom sheet. */
 export const SCRIM = 'rgba(8,8,10,0.72)';
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LEGACY — old token names, kept as aliases for the length of the rollout.
-// Every one of these is deleted at stage 7. Do not add new call sites.
-// ═══════════════════════════════════════════════════════════════════════════
-
-/** @deprecated use Fonts.digits */
-export const DIGITAL_FONT = Fonts.digits;
-
-Object.assign(Colors, {
-  background:    Colors.base,      // @deprecated use base
-  surfaceRaised: Colors.raised,    // @deprecated use raised
-  surfaceNested: Colors.nested,    // @deprecated use nested
-  primary:       Colors.ember,     // @deprecated use ember
-  primaryLight:  Colors.emberHot,  // @deprecated use emberHot
-  primaryDim:    Colors.emberDim,  // @deprecated use emberDim
-  amber:         Colors.warn,      // @deprecated use warn
-  partial:       Colors.warn,      // @deprecated use warn
-  blue:          Colors.ice,       // @deprecated use ice
-  blueDim:       Colors.iceDim,    // @deprecated use iceDim
-  success:       Colors.gold,      // @deprecated use gold
-  textPrimary:   Colors.text,      // @deprecated use text
-  textSecondary: Colors.textMuted, // @deprecated use textMuted
-  border:        Colors.line,      // @deprecated use line
-  borderActive:  Colors.ember,     // @deprecated use ember
-});
-
-// `textMuted` is the one alias that changes meaning rather than just name: it
-// used to be #505050 (2.11:1, unreadable) and is now the readable secondary.
-// Old call sites that genuinely wanted "very quiet" take `textFaint` when they
-// migrate — and are legible for the first time either way.
-
-// @deprecated use Typography.timerHero / timerLarge / timerInline
-Object.assign(Typography, {
-  timerHuge:   Typography.timerHero,
-  timerMedium: Typography.timerInline,
-});
-
-/** @deprecated use Elevation.card / floating / glowEmber / glowIce */
-export const Shadows = {
-  orange: Elevation.glowEmber,
-  blue:   Elevation.glowIce,
-  // Cards get a hairline and no shadow now. Spreading this is a no-op, which is
-  // intentional — the old `...Shadows.card` call sites keep compiling and simply
-  // stop painting a shadow that was invisible on a near-black ground anyway.
-  card:   {},
-};

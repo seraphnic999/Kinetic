@@ -2,140 +2,21 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   ScrollView, StatusBar, Modal,
-  FlatList, Platform, useWindowDimensions,
+   Platform, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, DIGITAL_FONT, IconSize } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent } from '../theme';
 import { Icon } from '../components/Icon';
+import { Stepper } from '../components/Stepper';
+import { PickerModal } from '../components/PickerModal';
+import { EmptyState } from '../components/States';
 import { upsertSession, generateId } from '../utils/storage';
 import { BODY_SECTIONS, EXERCISES_BY_SECTION, WARMUP_TYPES, EXERCISE_TYPES, CARDIO_TYPES, CARDIO_TYPE_LABELS } from '../data/exercises';
 import { formatTime } from '../utils/time';
 import { templateExerciseLabel } from '../utils/analytics';
 
 // ---------- Sub-component: Numeric Stepper ----------
-function Stepper({ value, onChange, min = 0, max = 999, label }) {
-  const [text, setText] = useState(String(value));
-
-  // Sync display when value changes externally (e.g. +/- buttons)
-  useEffect(() => { setText(String(value)); }, [value]);
-
-  const handleChangeText = (t) => {
-    setText(t);
-    const n = parseInt(t, 10);
-    // Don't clamp during typing — allow intermediate states (e.g. typing "30" via "3")
-    if (!isNaN(n) && n >= 0) onChange(Math.min(max, n));
-  };
-
-  const handleBlur = () => {
-    const n = parseInt(text, 10);
-    const clamped = isNaN(n) ? min : Math.max(min, Math.min(max, n));
-    onChange(clamped);
-    setText(String(clamped));
-  };
-
-  return (
-    <View style={stepperStyles.container}>
-      {label && <Text style={stepperStyles.label} numberOfLines={1}>{label}</Text>}
-      <View style={stepperStyles.row}>
-        <TouchableOpacity
-          style={stepperStyles.btn}
-          onPress={() => onChange(Math.max(min, value - 1))}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        >
-          <Icon name="minus" size={IconSize.meta} color={Colors.textPrimary} />
-        </TouchableOpacity>
-        <TextInput
-          style={stepperStyles.input}
-          value={text}
-          onChangeText={handleChangeText}
-          onBlur={handleBlur}
-          keyboardType="number-pad"
-          selectTextOnFocus
-        />
-        <TouchableOpacity
-          style={stepperStyles.btn}
-          onPress={() => onChange(Math.min(max, value + 1))}
-          activeOpacity={0.7}
-          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        >
-          <Icon name="add" size={IconSize.meta} color={Colors.textPrimary} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-const stepperStyles = StyleSheet.create({
-  container: { alignItems: 'center', flex: 1, minWidth: 0 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
-  row: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch',
-    backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md, overflow: 'hidden',
-  },
-  // Buttons stay a fixed comfortable tap size; the input FLEXES to absorb
-  // whatever width remains, so 3-across rows never overflow on narrow phones.
-  btn: {
-    width: 34, height: 40, alignItems: 'center', justifyContent: 'center',
-  },
-  input: {
-    flex: 1, minWidth: 0, height: 40, textAlign: 'center', paddingHorizontal: 2,
-    ...Typography.h3, color: Colors.textPrimary,
-    backgroundColor: Colors.background,
-  },
-});
-
-// ---------- Sub-component: Option Picker Modal ----------
-function PickerModal({ visible, title, options, onSelect, onClose }) {
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={pickerStyles.overlay}>
-        <View style={pickerStyles.sheet}>
-          <View style={pickerStyles.header}>
-            <Text style={pickerStyles.title}>{title}</Text>
-            <TouchableOpacity onPress={onClose}>
-              <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
-          <FlatList
-            data={options}
-            keyExtractor={item => item}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={pickerStyles.option}
-                onPress={() => { onSelect(item); onClose(); }}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  pickerStyles.optionText,
-                  item === 'Other' && { color: Colors.primary },
-                ]}>{item}</Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-const pickerStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  sheet: {
-    backgroundColor: Colors.surface, borderTopLeftRadius: Radius.lg, borderTopRightRadius: Radius.lg,
-    maxHeight: '70%', paddingBottom: Spacing.xxl,
-  },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  title: { ...Typography.h3, color: Colors.textPrimary },
-  option: {
-    paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
-  },
-  optionText: { ...Typography.bodyLarge, color: Colors.textPrimary },
-});
-
-// ---------- Sub-component: Regular Exercise Form ----------
+// ---------- Exercise forms ----------
 function RegularExerciseForm({ exercise, onChange }) {
   const [showSection, setShowSection] = useState(false);
   const [showExercise, setShowExercise] = useState(false);
@@ -158,7 +39,7 @@ function RegularExerciseForm({ exercise, onChange }) {
           <Text style={exercise.bodySection ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
             {exercise.bodySection || 'Select body section...'}
           </Text>
-          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
+          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -174,7 +55,7 @@ function RegularExerciseForm({ exercise, onChange }) {
             <Text style={exercise.name ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
               {exercise.name || 'Select exercise...'}
             </Text>
-            <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
+            <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
           </TouchableOpacity>
           {exercise.name === 'Other' && (
             <TextInput
@@ -247,7 +128,7 @@ function WarmupForm({ exercise, onChange }) {
           <Text style={exercise.warmupType ? formStyles.selectorValue : formStyles.selectorPlaceholder}>
             {exercise.warmupType || 'Select type...'}
           </Text>
-          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
+          <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
         </TouchableOpacity>
       </View>
       <View style={formStyles.timerRow}>
@@ -311,9 +192,9 @@ function IntervalsForm({ exercise, onChange }) {
 const formStyles = StyleSheet.create({
   container: { gap: Spacing.md },
   field: { gap: Spacing.xs },
-  fieldLabel: { ...Typography.label, color: Colors.textSecondary },
+  fieldLabel: { ...Typography.label, color: Colors.textMuted },
   selector: {
-    backgroundColor: Colors.surfaceRaised,
+    backgroundColor: Colors.raised,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
@@ -321,20 +202,20 @@ const formStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  selectorValue: { ...Typography.body, color: Colors.textPrimary },
+  selectorValue: { ...Typography.body, color: Colors.text },
   selectorPlaceholder: { ...Typography.body, color: Colors.textMuted },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  chip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.surfaceRaised },
-  chipActive: { backgroundColor: Colors.primary },
-  chipTxt: { ...Typography.bodySmall, color: Colors.textSecondary },
-  chipActiveTxt: { color: Colors.background, fontWeight: '700' },
+  chip: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.raised },
+  chipActive: { backgroundColor: Colors.ember },
+  chipTxt: { ...Typography.bodySmall, color: Colors.textMuted },
+  chipActiveTxt: { color: Colors.base },
   textInput: {
-    backgroundColor: Colors.surfaceRaised,
+    backgroundColor: Colors.raised,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     ...Typography.body,
-    color: Colors.textPrimary,
+    color: Colors.text,
     marginTop: Spacing.xs,
   },
   stepperRow: {
@@ -344,12 +225,13 @@ const formStyles = StyleSheet.create({
   timerRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.lg,
   },
+  // Not seven-segment: §3.1 reserves DSEG7 for LIVE countdowns, and this is a
+  // configured value sitting still in a form. The same mistake put the login
+  // wordmark in a face with no letterforms.
   timerHint: {
-    ...Typography.timerMedium,
-    color: Colors.amber,
+    ...Typography.metric,
+    color: Colors.warn,
     flex: 1,
-    fontFamily: DIGITAL_FONT,
-    letterSpacing: 2,
   },
 });
 
@@ -491,12 +373,12 @@ export default function SessionEditorScreen({ navigation, route }) {
 
   return (
     <View style={[styles.container, Platform.OS === 'web' && { height: windowHeight }]}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.base} />
 
       {/* Nav Header */}
       <View style={[styles.navHeader, { paddingTop: insets.top }]} onLayout={e => setNavH(e.nativeEvent.layout.height)}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Icon name="back" size={IconSize.row} color={Colors.textPrimary} />
+          <Icon name="back" size={IconSize.row} color={Colors.text} />
         </TouchableOpacity>
         <Text style={styles.navTitle}>
           {existingSession ? 'Edit Session' : 'New Session'}
@@ -545,9 +427,11 @@ export default function SessionEditorScreen({ navigation, route }) {
           <Text style={styles.sectionLabel}>EXERCISES</Text>
 
           {effectiveExercises.length === 0 && (
-            <View style={styles.emptyExercises}>
-              <Text style={styles.emptyExercisesText}>No exercises yet — add one below</Text>
-            </View>
+            <EmptyState
+              icon="emptySessions"
+              title="No exercises yet"
+              message="Add one below and it becomes part of this session."
+            />
           )}
 
           {effectiveExercises.map((ex, idx) => {
@@ -578,13 +462,13 @@ export default function SessionEditorScreen({ navigation, route }) {
                           style={[styles.moveBtn, !canUp && styles.moveBtnDisabled]}
                           onPress={() => canUp && moveExercise(ex.id, -1)}
                         >
-                          <Icon name="chevronUp" size={IconSize.meta} color={canUp ? Colors.textSecondary : Colors.textMuted} />
+                          <Icon name="chevronUp" size={IconSize.meta} color={canUp ? Colors.textMuted : Colors.textMuted} />
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={[styles.moveBtn, !canDown && styles.moveBtnDisabled]}
                           onPress={() => canDown && moveExercise(ex.id, 1)}
                         >
-                          <Icon name="chevronDown" size={IconSize.meta} color={canDown ? Colors.textSecondary : Colors.textMuted} />
+                          <Icon name="chevronDown" size={IconSize.meta} color={canDown ? Colors.textMuted : Colors.textMuted} />
                         </TouchableOpacity>
                       </>
                     )}
@@ -594,7 +478,7 @@ export default function SessionEditorScreen({ navigation, route }) {
                     >
                       <Icon name="trash" size={IconSize.meta} color={Colors.danger} />
                     </TouchableOpacity>
-                    <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textSecondary} />
+                    <Icon name={isExpanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textMuted} />
                   </View>
                 </TouchableOpacity>
 
@@ -651,7 +535,7 @@ export default function SessionEditorScreen({ navigation, route }) {
                             subExercises: [...ex.subExercises, newRegular()],
                           })}
                         >
-                          <Icon name="add" size={IconSize.meta} color={Colors.primary} />
+                          <Icon name="add" size={IconSize.meta} color={Colors.ember} />
                           <Text style={styles.addSubBtnText}>Add Exercise to Combo</Text>
                         </TouchableOpacity>
                       </View>
@@ -668,7 +552,7 @@ export default function SessionEditorScreen({ navigation, route }) {
             onPress={() => setShowAddMenu(true)}
             activeOpacity={0.8}
           >
-            <Icon name="add" size={IconSize.row} color={Colors.primary} />
+            <Icon name="add" size={IconSize.row} color={Colors.ember} />
             <Text style={styles.addExerciseBtnText}>Add Exercise</Text>
           </TouchableOpacity>
         </View>
@@ -686,7 +570,7 @@ export default function SessionEditorScreen({ navigation, route }) {
             <View style={menuStyles.header}>
               <Text style={menuStyles.title}>Add Exercise</Text>
               <TouchableOpacity onPress={() => setShowAddMenu(false)}>
-                <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
+                <Icon name="close" size={IconSize.row} color={Colors.textMuted} />
               </TouchableOpacity>
             </View>
             {[
@@ -706,7 +590,7 @@ export default function SessionEditorScreen({ navigation, route }) {
                 activeOpacity={0.7}
               >
                 <View style={menuStyles.optionIcon}>
-                  <Icon name={opt.icon} size={IconSize.row} color={Colors.primary} />
+                  <Icon name={opt.icon} size={IconSize.row} color={Colors.ember} />
                 </View>
                 <View style={menuStyles.optionText}>
                   <Text style={menuStyles.optionLabel}>{opt.label}</Text>
@@ -730,34 +614,34 @@ const menuStyles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.line,
   },
-  title: { ...Typography.h3, color: Colors.textPrimary },
+  title: { ...Typography.h3, color: Colors.text },
   option: {
     flexDirection: 'row', alignItems: 'center',
-    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: Spacing.md,
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.line, gap: Spacing.md,
   },
   optionIcon: {
     width: 44, height: 44, borderRadius: Radius.md,
-    backgroundColor: Colors.primaryDim, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.emberDim, alignItems: 'center', justifyContent: 'center',
   },
   optionText: { flex: 1 },
-  optionLabel: { ...Typography.h3, color: Colors.textPrimary },
-  optionDesc: { ...Typography.bodySmall, color: Colors.textSecondary, marginTop: 2 },
+  optionLabel: { ...Typography.h3, color: Colors.text },
+  optionDesc: { ...Typography.bodySmall, color: Colors.textMuted, marginTop: 2 },
 });
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.base,
   },
   navHeader: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: Colors.line,
   },
   backBtn: { padding: Spacing.sm },
-  navTitle: { ...Typography.h3, color: Colors.textPrimary, flex: 1, textAlign: 'center' },
+  navTitle: { ...Typography.h3, color: Colors.text, flex: 1, textAlign: 'center' },
   navRight:    { width: 40 },
   scroll: {
     flex: 1,
@@ -765,32 +649,30 @@ const styles = StyleSheet.create({
   },
   scrollContent: { padding: Spacing.md, paddingBottom: Spacing.xxl, gap: Spacing.lg },
   section: { gap: Spacing.sm },
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary },
+  sectionLabel: { ...Typography.label, color: Colors.textMuted },
   nameInput: {
     backgroundColor: Colors.surface, borderRadius: Radius.md,
     paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
-    ...Typography.bodyLarge, color: Colors.textPrimary,
-    borderWidth: 1, borderColor: Colors.border,
+    ...Typography.bodyLarge, color: Colors.text,
+    borderWidth: 1, borderColor: Colors.line,
   },
   restTimerRow: {
     flexDirection: 'row', alignItems: 'center', gap: Spacing.lg,
   },
   restTimerHint: {
-    ...Typography.timerMedium,
-    color: Colors.amber,
+    ...Typography.metric,   // see timerHint above — a setting, not a countdown
+    color: Colors.warn,
     flex: 1,
-    fontFamily: DIGITAL_FONT,
-    letterSpacing: 2,
   },
   emptyExercises: {
     padding: Spacing.lg, backgroundColor: Colors.surface,
     borderRadius: Radius.md, alignItems: 'center',
-    borderWidth: 1, borderColor: Colors.border, borderStyle: 'dashed',
+    borderWidth: 1, borderColor: Colors.line, borderStyle: 'dashed',
   },
   emptyExercisesText: { ...Typography.body, color: Colors.textMuted, textAlign: 'center' },
   exerciseCard: {
     backgroundColor: Colors.surface, borderRadius: Radius.md,
-    borderWidth: 1, borderColor: Colors.border, overflow: 'hidden',
+    borderWidth: 1, borderColor: Colors.line, overflow: 'hidden',
   },
   exerciseHeader: {
     flexDirection: 'row', alignItems: 'center',
@@ -798,11 +680,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   exerciseLabelGroup: { flex: 1 },
-  exerciseLabel: { ...Typography.body, color: Colors.textPrimary },
+  exerciseLabel: { ...Typography.body, color: Colors.text },
   exerciseActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   moveBtn: {
     width: 30, height: 30, alignItems: 'center', justifyContent: 'center',
-    borderRadius: Radius.sm, backgroundColor: Colors.surfaceRaised,
+    borderRadius: Radius.sm, backgroundColor: Colors.raised,
   },
   moveBtnDisabled: { opacity: 0.3 },
   deleteExBtn: {
@@ -810,30 +692,30 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm, backgroundColor: `${Colors.danger}22`,
   },
   exerciseForm: {
-    padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.border,
+    padding: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.line,
   },
   comboSets: { alignItems: 'flex-start' },
   subExerciseCard: {
-    backgroundColor: Colors.surfaceNested, borderRadius: Radius.md, padding: Spacing.md,
+    backgroundColor: Colors.nested, borderRadius: Radius.md, padding: Spacing.md,
     gap: Spacing.md,
   },
   subExerciseHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  subExerciseTitle: { ...Typography.label, color: Colors.amber },
+  subExerciseTitle: { ...Typography.label, color: Colors.warn },
   addSubBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.xs, paddingVertical: Spacing.sm,
-    borderWidth: 1, borderColor: Colors.primary, borderStyle: 'dashed',
+    borderWidth: 1, borderColor: Colors.ember, borderStyle: 'dashed',
     borderRadius: Radius.md,
   },
-  addSubBtnText: { ...Typography.body, color: Colors.primary },
+  addSubBtnText: { ...Typography.body, color: Colors.ember },
   addExerciseBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: Spacing.sm, paddingVertical: Spacing.md,
     borderRadius: Radius.md, borderWidth: 1,
-    borderColor: Colors.primary, borderStyle: 'dashed',
+    borderColor: Colors.ember, borderStyle: 'dashed',
     marginTop: Spacing.sm,
   },
-  addExerciseBtnText: { ...Typography.h3, color: Colors.primary },
+  addExerciseBtnText: { ...Typography.h3, color: Colors.ember },
 });

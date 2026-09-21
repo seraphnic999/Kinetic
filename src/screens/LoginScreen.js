@@ -38,7 +38,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.background }}
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.base }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={[s.root, { paddingTop: insets.top + Spacing.xl }]}
@@ -46,7 +46,7 @@ export default function LoginScreen() {
       >
         {/* Logo / wordmark */}
         <View style={s.logoRow}>
-          <Icon name="bolt" size={IconSize.section} color={Colors.primary} />
+          <Icon name="bolt" size={IconSize.section} color={Colors.ember} />
           <Text style={s.logo}>KINETIC</Text>
         </View>
         <Text style={s.tagline}>Your training companion</Text>
@@ -83,7 +83,7 @@ export default function LoginScreen() {
 
           <TouchableOpacity style={s.btn} onPress={handleSubmit} activeOpacity={0.8} disabled={loading}>
             {loading
-              ? <ActivityIndicator color={Colors.background} />
+              ? <ActivityIndicator color={Colors.base} />
               : <Text style={s.btnTxt}>{mode === 'login' ? 'Sign in' : 'Sign up'}</Text>
             }
           </TouchableOpacity>
@@ -91,7 +91,7 @@ export default function LoginScreen() {
           <TouchableOpacity onPress={() => { setMode(m => m === 'login' ? 'signup' : 'login'); setError(''); setInfo(''); }} style={s.switchRow}>
             <Text style={s.switchTxt}>
               {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
-              <Text style={{ color: Colors.primary }}>
+              <Text style={{ color: Colors.ember }}>
                 {mode === 'login' ? 'Sign up' : 'Sign in'}
               </Text>
             </Text>
@@ -111,22 +111,22 @@ const s = StyleSheet.create({
   // wordmark as garbage on device. "DSEG7 renders a clock, Barlow renders a
   // record" (docs/DESIGN.md §3.1); a wordmark is neither, so it takes display.
   logo:     { ...Typography.h1, fontSize: 34, color: Colors.ember, letterSpacing: 4 },
-  tagline:  { ...Typography.body, color: Colors.textSecondary, marginBottom: Spacing.xxl },
+  tagline:  { ...Typography.body, color: Colors.textMuted, marginBottom: Spacing.xxl },
   card:     { width: '100%', backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.xl, gap: Spacing.sm },
-  cardTitle:{ ...Typography.h2, color: Colors.textPrimary, marginBottom: Spacing.sm },
-  label:    { ...Typography.label, color: Colors.textSecondary },
+  cardTitle:{ ...Typography.h2, color: Colors.text, marginBottom: Spacing.sm },
+  label:    { ...Typography.label, color: Colors.textMuted },
   input:    {
-    height: 48, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md,
-    paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.textPrimary,
+    height: 48, backgroundColor: Colors.raised, borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md, ...Typography.body, color: Colors.text,
   },
   error:    { ...Typography.bodySmall, color: Colors.danger },
-  info:     { ...Typography.bodySmall, color: Colors.primary },
+  info:     { ...Typography.bodySmall, color: Colors.ember },
   btn:      {
-    height: 52, backgroundColor: Colors.primary, borderRadius: Radius.full,
+    height: 52, backgroundColor: Colors.ember, borderRadius: Radius.full,
     alignItems: 'center', justifyContent: 'center', marginTop: Spacing.sm,
   },
-  btnTxt:   { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  btnTxt:   { ...Typography.h3, color: Colors.base },
   switchRow:{ alignItems: 'center', paddingVertical: Spacing.sm },
-  switchTxt:{ ...Typography.body, color: Colors.textSecondary },
+  switchTxt:{ ...Typography.body, color: Colors.textMuted },
   hint:     { ...Typography.bodySmall, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl, paddingHorizontal: Spacing.lg },
 });

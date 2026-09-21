@@ -6,10 +6,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize, Elevation } from '../theme';
+import { Colors, Typography, Spacing, Radius, IconSize, Elevation } from '../theme';
 import { ChartCard, LineChart } from '../components/Chart';
 import { lbLabel } from '../utils/units';
 import { Icon } from '../components/Icon';
+import { SkeletonList } from '../components/States';
 import { supabase } from '../config/supabase';
 import { PickerModal, PickerField } from '../components/PickerModal';
 
@@ -26,8 +27,8 @@ const PERIODS = [
 
 // ─── Metric type definitions ─────────────────────────────────────────────────
 const METRICS = {
-  weight: { key: 'weight', label: 'Weight', field: 'weight_kg', unit: 'kg',  color: Colors.blue,  icon: 'bodyProfile',       decimal: true,  max: 999 },
-  waist:  { key: 'waist',  label: 'Waist',  field: 'waist_cm',  unit: 'cm',  color: Colors.amber, icon: 'tape',     decimal: true,  max: 999 },
+  weight: { key: 'weight', label: 'Weight', field: 'weight_kg', unit: 'kg',  color: Colors.ice,  icon: 'bodyProfile',       decimal: true,  max: 999 },
+  waist:  { key: 'waist',  label: 'Waist',  field: 'waist_cm',  unit: 'cm',  color: Colors.warn, icon: 'tape',     decimal: true,  max: 999 },
   diet:   { key: 'diet',   label: 'Diet',   field: 'diet_pct',  unit: '%',   color: Colors.gold,  icon: 'diet', decimal: false, max: 100 },
 };
 const METRIC_OPTIONS = Object.values(METRICS).map(m => ({ key: m.key, label: m.label }));
@@ -62,10 +63,10 @@ function PeriodSelector({ value, onChange }) {
 }
 const ps = StyleSheet.create({
   row:         { flexDirection: 'row', gap: Spacing.sm },
-  btn:         { flex: 1, height: 36, borderRadius: Radius.full, backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center' },
-  btnActive:   { backgroundColor: Colors.primary },
-  label:       { ...Typography.bodySmall, color: Colors.textSecondary, fontWeight: '600' },
-  labelActive: { color: Colors.background, fontWeight: '700' },
+  btn:         { flex: 1, height: 36, borderRadius: Radius.full, backgroundColor: Colors.raised, alignItems: 'center', justifyContent: 'center' },
+  btnActive:   { backgroundColor: Colors.ember },
+  label:       { ...Typography.bodySmall, color: Colors.textMuted },
+  labelActive: { color: Colors.base },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
@@ -176,15 +177,17 @@ export default function MetricsScreen({ navigation }) {
 
   const hasAnyHistory = chartData.weight.length >= 2 || chartData.waist.length >= 2 || chartData.diet.length >= 2;
 
+  // §7.7: skeleton rows, not a centred spinner. A lone spinner on a near-black
+  // screen with no chrome is indistinguishable from a screen that has failed.
   if (loading) return (
-    <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
-      <ActivityIndicator color={Colors.primary} size="large" />
+    <View style={{ flex: 1, backgroundColor: Colors.base }}>
+      <SkeletonList count={4} lines={2} />
     </View>
   );
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: Colors.background }}
+      style={{ flex: 1, backgroundColor: Colors.base }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <View style={[s.header, { paddingTop: insets.top + Spacing.sm }]}>
@@ -195,13 +198,13 @@ export default function MetricsScreen({ navigation }) {
         style={{ flex: 1 }}
         contentContainerStyle={[s.content, { paddingBottom: insets.bottom + Spacing.xl }]}
         keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.ember} />}
       >
         {/* ── Add entry form ── */}
         <View style={s.section}>
           <Text style={s.sectionLabel}>
             Log a metric
-            {hasEntryForDate && <Text style={{ color: Colors.primary }}>  ✓ Logged</Text>}
+            {hasEntryForDate && <Text style={{ color: Colors.ember }}>  ✓ Logged</Text>}
           </Text>
 
           <View style={s.formCard}>
@@ -213,7 +216,7 @@ export default function MetricsScreen({ navigation }) {
             />
 
             <TouchableOpacity style={s.dateField} onPress={openDatePicker} activeOpacity={0.7}>
-              <Icon name="calendar" size={IconSize.meta} color={Colors.textSecondary} />
+              <Icon name="calendar" size={IconSize.meta} color={Colors.textMuted} />
               <Text style={s.dateFieldTxt}>{longDate(selectedDate)}</Text>
               <Text style={s.dateFieldChange}>Change</Text>
             </TouchableOpacity>
@@ -245,15 +248,15 @@ export default function MetricsScreen({ navigation }) {
               <View style={s.dietTrack}>
                 <View style={[s.dietFill, {
                   width: `${Math.min(100, Math.max(0, parseInt(valueStr, 10) || 0))}%`,
-                  backgroundColor: parseInt(valueStr, 10) >= 80 ? Colors.primary : parseInt(valueStr, 10) >= 50 ? Colors.amber : Colors.danger,
+                  backgroundColor: parseInt(valueStr, 10) >= 80 ? Colors.ember : parseInt(valueStr, 10) >= 50 ? Colors.warn : Colors.danger,
                 }]} />
               </View>
             )}
 
             <TouchableOpacity style={s.saveBtn} onPress={save} activeOpacity={0.8} disabled={saving}>
               {saving
-                ? <ActivityIndicator color={Colors.background} size="small" />
-                : <><Icon name="check" size={IconSize.meta} color={Colors.background} />
+                ? <ActivityIndicator color={Colors.base} size="small" />
+                : <><Icon name="check" size={IconSize.meta} color={Colors.base} />
                     <Text style={s.saveTxt}>{hasEntryForDate ? 'Update Entry' : 'Save Entry'}</Text></>
               }
             </TouchableOpacity>
@@ -326,19 +329,19 @@ export default function MetricsScreen({ navigation }) {
 }
 
 const s = StyleSheet.create({
-  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  header:       { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.line },
   title:        { ...Typography.h1, color: Colors.text },
   content:      { padding: Spacing.md, gap: Spacing.lg },
   section:      { gap: Spacing.sm },
-  sectionLabel: { ...Typography.label, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
-  formCard:     { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, gap: Spacing.md, ...Shadows.card },
-  dateField:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, height: 48, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised, paddingHorizontal: Spacing.md },
-  dateFieldTxt: { ...Typography.body, color: Colors.textPrimary, flex: 1 },
-  dateFieldChange: { ...Typography.bodySmall, color: Colors.primary, fontWeight: '600' },
-  dietTrack:    { height: 6, backgroundColor: Colors.surfaceRaised, borderRadius: 3, overflow: 'hidden' },
+  sectionLabel: { ...Typography.label, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, fontSize: 11 },
+  formCard:     { backgroundColor: Colors.surface, borderRadius: Radius.lg, padding: Spacing.lg, gap: Spacing.md, ...Elevation.card, },
+  dateField:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, height: 48, borderRadius: Radius.md, backgroundColor: Colors.raised, paddingHorizontal: Spacing.md },
+  dateFieldTxt: { ...Typography.body, color: Colors.text, flex: 1 },
+  dateFieldChange: { ...Typography.bodySmall, color: Colors.ember },
+  dietTrack:    { height: 6, backgroundColor: Colors.raised, borderRadius: 3, overflow: 'hidden' },
   dietFill:     { height: '100%', borderRadius: 3 },
-  saveBtn:      { height: 52, borderRadius: Radius.full, backgroundColor: Colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
-  saveTxt:      { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+  saveBtn:      { height: 52, borderRadius: Radius.full, backgroundColor: Colors.ember, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginTop: Spacing.xs },
+  saveTxt:      { ...Typography.h3, color: Colors.base },
   latest:       { ...Typography.metric, color: Colors.text },
   shadow:       { ...Typography.caption, color: Colors.textFaint },
   empty:        { alignItems: 'center', paddingVertical: Spacing.xxl, gap: Spacing.md },
@@ -347,8 +350,8 @@ const s = StyleSheet.create({
 
 const mi = StyleSheet.create({
   row:   { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  label: { ...Typography.body, color: Colors.textPrimary, width: 62 },
-  wrap:  { flex: 1, backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md },
-  input: { height: 44, paddingHorizontal: Spacing.md, ...Typography.h3, color: Colors.textPrimary, textAlign: 'center' },
-  unit:  { ...Typography.body, color: Colors.textSecondary, width: 32 },
+  label: { ...Typography.body, color: Colors.text, width: 62 },
+  wrap:  { flex: 1, backgroundColor: Colors.raised, borderRadius: Radius.md },
+  input: { height: 44, paddingHorizontal: Spacing.md, ...Typography.h3, color: Colors.text, textAlign: 'center' },
+  unit:  { ...Typography.body, color: Colors.textMuted, width: 32 },
 });

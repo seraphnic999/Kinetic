@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, IconSize, Elevation } from '../theme';
 import { Icon } from '../components/Icon';
+import { EmptyState, SkeletonList } from '../components/States';
 import { ChartCard, BarChart, LineChart } from '../components/Chart';
 import { PickerModal, PickerField } from '../components/PickerModal';
 import { supabase } from '../config/supabase';
@@ -296,7 +297,7 @@ function SessionRow({ session, derived, expanded, onPress }) {
             {derived.workSecs != null ? ` · ${fmtDur(derived.workSecs)} under load` : ''}
           </Text>
         </View>
-        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textFaint} />
+        <Icon name={expanded ? 'chevronUp' : 'chevronDown'} size={IconSize.meta} color={Colors.textMuted} />
       </View>
 
       {expanded && (session.exercises ?? []).length > 0 && (
@@ -394,9 +395,11 @@ export default function DashboardScreen({ navigation }) {
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
+  // §7.7: skeleton rows, not a centred spinner. A lone spinner on a near-black
+  // screen with no chrome is indistinguishable from a screen that has failed.
   if (loading) return (
-    <View style={{ flex: 1, backgroundColor: Colors.base, alignItems: 'center', justifyContent: 'center' }}>
-      <ActivityIndicator color={Colors.ember} size="large" />
+    <View style={{ flex: 1, backgroundColor: Colors.base }}>
+      <SkeletonList count={5} lines={2} />
     </View>
   );
 
@@ -426,11 +429,11 @@ export default function DashboardScreen({ navigation }) {
         }
       >
         {!hasData ? (
-          <View style={ds.empty}>
-            <Icon name="emptyChart" size={IconSize.empty} color={Colors.textFaint} />
-            <Text style={ds.emptyTitle}>Nothing to measure yet</Text>
-            <Text style={ds.emptyTxt}>Finish a workout and your numbers appear here.</Text>
-          </View>
+          <EmptyState
+            icon="emptyChart"
+            title="Nothing to measure yet"
+            message="Finish a session and your numbers appear here."
+          />
         ) : (
           <>
             {/* 1 — Am I showing up? */}
@@ -457,7 +460,7 @@ export default function DashboardScreen({ navigation }) {
                 <TouchableOpacity
                   onPress={() => navigation.navigate('ExerciseDetail', { exercise: selected })}
                   accessibilityRole="button" accessibilityLabel={`Open ${selected}`}>
-                  <Icon name="chevronRight" size={IconSize.meta} color={Colors.textFaint} />
+                  <Icon name="chevronRight" size={IconSize.meta} color={Colors.textMuted} />
                 </TouchableOpacity>
               ) : undefined}
               empty={!selected || progression.length < 2}

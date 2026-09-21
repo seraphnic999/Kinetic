@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../theme';
 import { Icon } from './Icon';
@@ -37,6 +37,24 @@ export function Stepper({
   // (an old 50s preference) lands back on it rather than staying off by 5.
   const down = () => onChange(Math.max(min, Math.ceil(value / step) * step - step));
   const up   = () => onChange(Math.min(max, Math.floor(value / step) * step + step));
+
+  // A local text buffer, so typing "30" via "3" is not clamped to `min` on the
+  // first keystroke and echoed back — which made the field feel broken for any
+  // value whose first digit is below the minimum. Committed on blur.
+  const [text, setText] = useState(String(value));
+  useEffect(() => { setText(String(value)); }, [value]);
+
+  const onType = (t) => {
+    setText(t);
+    const n = parseFloat(t.replace(',', '.'));
+    if (Number.isFinite(n) && n >= min) onChange(Math.min(max, n));
+  };
+  const onBlur = () => {
+    const n = parseFloat(text.replace(',', '.'));
+    const clamped = Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : min;
+    onChange(clamped);
+    setText(String(clamped));
+  };
   const L = size === 'large';
   // Standalone width = 2 buttons + a comfortable input width, with margin
   // to spare above the hard minimum so nothing ever clips.
@@ -55,17 +73,14 @@ export function Stepper({
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Icon name="minus" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Icon name="minus" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.text} />
         </TouchableOpacity>
 
         <TextInput
           style={[styles.input, L && styles.inputLarge]}
-          value={String(value)}
-          onChangeText={t => {
-            if (readOnly) return;
-            const n = parseInt(t, 10);
-            if (!isNaN(n)) onChange(Math.max(min, Math.min(max, n)));
-          }}
+          value={text}
+          onChangeText={t => { if (!readOnly) onType(t); }}
+          onBlur={() => { if (!readOnly) onBlur(); }}
           keyboardType="number-pad"
           selectTextOnFocus
           editable={!readOnly}
@@ -77,7 +92,7 @@ export function Stepper({
           activeOpacity={readOnly ? 1 : 0.7}
           hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
-          <Icon name="add" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.textPrimary} />
+          <Icon name="add" size={L ? 22 : 20} color={readOnly ? Colors.textMuted : Colors.text} />
         </TouchableOpacity>
       </View>
     </View>
@@ -89,11 +104,11 @@ const styles = StyleSheet.create({
   // computed `flexStyle` above so there is never more than one source
   // of truth for how this component sizes itself horizontally.
   container: { alignItems: 'center', minWidth: 0 },
-  label: { ...Typography.label, color: Colors.textSecondary, marginBottom: Spacing.xs },
+  label: { ...Typography.label, color: Colors.textMuted, marginBottom: Spacing.xs },
   labelLarge: { fontSize: 13, marginBottom: Spacing.xs },
   row: {
     flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch',
-    backgroundColor: Colors.surfaceRaised, borderRadius: Radius.md, overflow: 'hidden',
+    backgroundColor: Colors.raised, borderRadius: Radius.md, overflow: 'hidden',
   },
   rowLarge: { borderRadius: Radius.lg },
   // Buttons stay a fixed comfortable tap size; the input FLEXES to absorb
@@ -103,11 +118,11 @@ const styles = StyleSheet.create({
   input: {
     flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 36, height: 44,
     textAlign: 'center', paddingHorizontal: 2,
-    ...Typography.h3, color: Colors.textPrimary,
-    backgroundColor: Colors.background,
+    ...Typography.h3, color: Colors.text,
+    backgroundColor: Colors.base,
   },
   inputLarge: {
     height: 52, minWidth: 50,
-    ...Typography.h3, color: Colors.textPrimary,
+    ...Typography.h3, color: Colors.text,
   },
 });

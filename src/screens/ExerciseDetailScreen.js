@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, IconSize, Elevation } from '../theme';
 import { Icon } from '../components/Icon';
+import { EmptyState, SkeletonList } from '../components/States';
 import { ChartCard, LineChart } from '../components/Chart';
 import { supabase } from '../config/supabase';
 import { lbLabel } from '../utils/units';
@@ -64,9 +65,11 @@ export default function ExerciseDetailScreen({ navigation, route }) {
 
   useFocusEffect(useCallback(() => { setLoading(true); load(); }, [load]));
 
+  // §7.7: skeleton rows, not a centred spinner. A lone spinner on a near-black
+  // screen with no chrome is indistinguishable from a screen that has failed.
   if (loading) return (
-    <View style={{ flex: 1, backgroundColor: Colors.base, alignItems: 'center', justifyContent: 'center' }}>
-      <ActivityIndicator color={Colors.ember} size="large" />
+    <View style={{ flex: 1, backgroundColor: Colors.base }}>
+      <SkeletonList count={4} lines={2} />
     </View>
   );
 
@@ -92,10 +95,11 @@ export default function ExerciseDetailScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={[s.content, { paddingBottom: insets.bottom + Spacing.xxl }]}>
         {!d || d.sessions === 0 ? (
-          <View style={s.empty}>
-            <Icon name="emptyChart" size={IconSize.empty} color={Colors.textFaint} />
-            <Text style={s.emptyTxt}>No recorded sets for this exercise yet.</Text>
-          </View>
+          <EmptyState
+            icon="emptyChart"
+            title="No recorded sets"
+            message="Sets you log for this exercise land here."
+          />
         ) : (
           <>
             <View style={s.hero}>

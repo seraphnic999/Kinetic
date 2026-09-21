@@ -17,7 +17,7 @@ export function PickerModal({ visible, title, options, selected, onSelect, onClo
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Icon name="close" size={IconSize.row} color={Colors.textSecondary} />
+              <Icon name="close" size={IconSize.row} color={Colors.textMuted} />
             </TouchableOpacity>
           </View>
           <FlatList
@@ -33,7 +33,7 @@ export function PickerModal({ visible, title, options, selected, onSelect, onClo
                   {item.label}
                 </Text>
                 {item.key === selected && (
-                  <Icon name="check" size={IconSize.meta} color={Colors.primary} />
+                  <Icon name="check" size={IconSize.meta} color={Colors.ember} />
                 )}
               </TouchableOpacity>
             )}
@@ -52,7 +52,7 @@ export function PickerField({ label, value, placeholder, onPress }) {
       <Text style={value ? styles.fieldValue : styles.fieldPlaceholder}>
         {value || placeholder}
       </Text>
-      <Icon name="chevronDown" size={IconSize.meta} color={Colors.textSecondary} />
+      <Icon name="chevronDown" size={IconSize.meta} color={Colors.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -65,23 +65,23 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.border,
+    padding: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.line,
   },
-  title: { ...Typography.h3, color: Colors.textPrimary },
+  title: { ...Typography.h3, color: Colors.text },
   option: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingVertical: Spacing.md, paddingHorizontal: Spacing.lg,
-    borderBottomWidth: 1, borderBottomColor: Colors.border,
+    borderBottomWidth: 1, borderBottomColor: Colors.line,
   },
-  optionText: { ...Typography.bodyLarge, color: Colors.textPrimary },
-  optionTextActive: { color: Colors.primary, fontWeight: '700' },
+  optionText: { ...Typography.bodyLarge, color: Colors.text },
+  optionTextActive: { color: Colors.ember },
 
   field: {
-    height: 48, borderRadius: Radius.md, backgroundColor: Colors.surfaceRaised,
+    height: 48, borderRadius: Radius.md, backgroundColor: Colors.raised,
     flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
   },
-  fieldLabel:       { ...Typography.body, color: Colors.textPrimary },
-  fieldValue:       { ...Typography.body, color: Colors.textPrimary, flex: 1 },
+  fieldLabel:       { ...Typography.body, color: Colors.text },
+  fieldValue:       { ...Typography.body, color: Colors.text, flex: 1 },
   fieldPlaceholder: { ...Typography.body, color: Colors.textMuted, flex: 1 },
 });

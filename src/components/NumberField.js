@@ -61,7 +61,7 @@ function Field({
           accessibilityRole="button"
           accessibilityLabel={`Decrease ${label} by ${step}`}
         >
-          <Icon name="minus" size={IconSize.row} color={disabled ? Colors.textFaint : Colors.text} />
+          <Icon name="minus" size={IconSize.row} color={disabled ? Colors.textMuted : Colors.text} />
         </TouchableOpacity>
 
         <Pressable
@@ -101,7 +101,7 @@ function Field({
           accessibilityRole="button"
           accessibilityLabel={`Increase ${label} by ${step}`}
         >
-          <Icon name="add" size={IconSize.row} color={disabled ? Colors.textFaint : Colors.text} />
+          <Icon name="add" size={IconSize.row} color={disabled ? Colors.textMuted : Colors.text} />
         </TouchableOpacity>
       </View>
 

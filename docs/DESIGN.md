@@ -1049,29 +1049,43 @@ names stay aliased until the last stage, so no screen is migrated twice.
 | **3** | **Navigation** | ✅ | Four-tab bar with solid active variants · You tab (account, defaults, whole-history export) · Training/Summary/Editor pushed over the bar · header circle cluster retired |
 | **4** | **Analytics engine** | ✅ | `shared/analytics.js` + sync check · `parent_id` migration, combo children as real rows · timeline-derived work/rest/density · e1RM · cardio distance |
 | **5** | **Stats + Body** | ✅ | Four comparison tiles · records feed · e1RM progression · volume with rolling average · body split · lift-vs-cardio · body strip · Exercise Detail · grouped history · `Chart.js` on svg |
-| **6** | **Training** | ⬜ | Rest hero · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed `SET DONE` bar · Summary rebuild |
-| **7** | **Sweep** | ⬜ | Train tab · editor restyle · shared primitives · empty/loading states · splash + notification icon · delete the legacy token aliases · release build |
+| **6** | **Training** | ✅ | Rest hero with a draining ring · set pips · detail sheet · plate-math weight entry with the lb shadow · fixed 72px `SET DONE` bar · Summary rebuilt on volume/under-load/PRs |
+| **7** | **Sweep** | ✅ | Train tab with a next-up hero, swipe actions and a speed dial · editor restyle · shared primitives · skeleton loading + empty states · splash re-ground, notification icon wired, adaptive-icon field · 18 legacy aliases deleted · release build |
 
-**Shipped as v13 / versionCode 13 (1.4.1).** Stages 1–5 are in; 6 and 7 remain.
+**Shipped as v14 / versionCode 14 (1.5.0).** All seven stages are in.
 
-v13 is v12 plus four corrections found by walking the build on the emulator:
-the You tab's rest-timer and sound rows had glyphs that read as a no-entry sign
-and a heart-rate trace (see ICON-FIXES.md); the Body tab's pound shadow sat
-below the date axis where it read as a label on the first date, and now sits
-beside the value it converts; and the Stats "under load" tile said *no timed
-sets yet* for a week that simply had not started, which read as though the app
-had never timed anything.
+What stages 6 and 7 changed, beyond the table above:
 
-Known gaps at v13, both scheduled for stage 6:
+- **The rest countdown stopped being a detail.** It was a 30px readout in the
+  corner of the header beside a session timer it was easy to confuse with. It
+  is now the top third of the screen, and ember goes cold everywhere while ice
+  is lit so there is one live colour at a time (§2.2).
+- **Weight entry stopped costing forty taps.** The old ±1 stepper meant 60 kg
+  to 82.5 kg was forty-five presses, so nobody did it — people trained at
+  whatever the template said, and the logged weight drifted away from the real
+  one. Every number on the Stats tab was downstream of that.
+- **The summary stopped doing its own arithmetic.** It now runs through
+  `shared/analytics.js` like every other surface. `sessionFromSummary()` maps a
+  just-finished local session onto the shape the engine consumes, mirroring
+  `syncWorkout`'s row mapping so a session and its own history cannot disagree.
+- **Two §3.1 violations found and fixed.** The editor set its rest-timer hints
+  in DSEG7, which is reserved for live countdowns. Same class of bug as the
+  login wordmark in v11 — a static value in a face that has no business
+  rendering one.
+- **Four icons were being drawn in `textFaint`,** which theme.js forbids in
+  as many words: at 1.5u on this ground the set disappears.
 
-- **The training screen is untouched.** It still has the small header rest
-  timer, the status dot instead of set pips, the full-screen detail swap, and
-  the one-tap-per-kilo stepper. That is the single biggest usability change in
-  the whole redesign and it has not happened yet.
-- **The lb shadow (§3.5) is only on the Body tab, the export and Exercise
-  Detail.** It belongs on the set-detail weight box most of all — the one place
-  you actually read a weight off the screen and set a machine to it, which is
-  the entire reason §12.1 asked for it. That is stage 6 work.
+Known gaps at v14:
+
+- **Combo weight entry is a compact stepper pair, not the full plate-math
+  field.** A five-exercise combo rendered with five WeightFields is three
+  screens of scrolling. The step is still 2.5 kg and each weight still carries
+  its pound shadow, but the chips are not there.
+- **`combo` and `diet` remain weak glyphs** (ICON-FIXES.md) — one reads as a
+  clover, the other as a prohibition sign.
+- **Historic combo volume before the `parent_id` migration is unrecoverable.**
+  §12.5 — the events were logged without weights, so there is nothing to
+  backfill from.
 
 ---
 

@@ -1,420 +1,406 @@
-import React, { useState, useCallback } from 'react';
+/**
+ * Train — the tab you land on, and the one that should cost one tap.
+ *
+ * §7.1. The old list was cards with three buttons each (edit, delete, start),
+ * so the action you take 95% of the time was one third of a row, the same size
+ * as the one that deletes your template. And nothing on the row said anything
+ * about the session except its name and an exercise count — despite the app
+ * holding every kilo you have ever lifted under that name.
+ *
+ * So: a hero card for what you are most likely to train next, rows for the
+ * rest with their body glyphs and their last run on them, and the destructive
+ * actions moved behind a swipe where they cannot be hit by accident.
+ */
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  RefreshControl, StatusBar, useWindowDimensions,
+  RefreshControl, StatusBar, useWindowDimensions, Animated,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Typography, Spacing, Radius, Shadows, IconSize, Touch, onAccent } from '../theme';
+import {
+  Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent,
+} from '../theme';
 import { Icon } from '../components/Icon';
+import { EmptyState, SkeletonList } from '../components/States';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { loadSessions, deleteSession, syncSessions } from '../utils/storage';
 import { peekPrefs } from '../utils/prefs';
+import { supabase } from '../config/supabase';
 import { EXERCISE_TYPES } from '../data/exercises';
+import {
+  shapeSessions, deriveAll, fmtTonnes, fmtDur, dayLabel, SESSION_LIMIT,
+} from '../utils/analytics';
 
-// Derive unique body areas covered by a session's exercises
-/** The two non-anatomical chips get a type glyph; body sections stay text. */
-const CHIP_ICON = { Warmup: 'warmup', Intervals: 'intervals' };
-
-const getBodyAreas = (exercises) => {
-  const areas = new Set();
-  exercises?.forEach(ex => {
-    if (ex.type === EXERCISE_TYPES.REGULAR && ex.bodySection) {
-      areas.add(ex.bodySection);
-    } else if (ex.type === EXERCISE_TYPES.COMBO) {
-      ex.subExercises?.forEach(sub => {
-        if (sub.bodySection) areas.add(sub.bodySection);
-      });
-    } else if (ex.type === EXERCISE_TYPES.WARMUP) {
-      areas.add('Warmup');
-    } else if (ex.type === EXERCISE_TYPES.INTERVALS) {
-      areas.add('Intervals');
-    }
-  });
-  return Array.from(areas);
+const SECTION_ICON = {
+  Chest: 'bodyChest', Back: 'bodyBack', Shoulders: 'bodyShoulders',
+  'Front Arms': 'bodyArmsFront', 'Back Arms': 'bodyArmsBack',
+  Legs: 'bodyLegs', Core: 'bodyCore', Other: 'bodyOther',
+  Warmup: 'warmup', Intervals: 'intervals',
 };
+
+/** Distinct areas a template covers, in the order they are first trained. */
+const getBodyAreas = (exercises) => {
+  const areas = [];
+  const add = (a) => { if (a && !areas.includes(a)) areas.push(a); };
+  exercises?.forEach(ex => {
+    if (ex.type === EXERCISE_TYPES.REGULAR)        add(ex.bodySection);
+    else if (ex.type === EXERCISE_TYPES.COMBO)     ex.subExercises?.forEach(s => add(s.bodySection));
+    else if (ex.type === EXERCISE_TYPES.WARMUP)    add('Warmup');
+    else if (ex.type === EXERCISE_TYPES.INTERVALS) add('Intervals');
+  });
+  return areas;
+};
+
+/** Body glyphs for a template, capped so a full-body session stays one line. */
+function AreaGlyphs({ areas, size = IconSize.meta, tint = Colors.textMuted, max = 5 }) {
+  const shown = areas.slice(0, max);
+  const rest  = areas.length - shown.length;
+  return (
+    <View style={s.glyphRow}>
+      {shown.map((a, i) => (
+        <Icon key={`${a}-${i}`} name={SECTION_ICON[a] ?? 'bodyOther'} size={size}
+              color={a === 'Warmup' ? Colors.warn : a === 'Intervals' ? Colors.ice : tint} />
+      ))}
+      {rest > 0 ? <Text style={s.glyphMore}>+{rest}</Text> : null}
+    </View>
+  );
+}
 
 export default function SessionListScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [sessions, setSessions] = useState([]);
   const { height: windowHeight } = useWindowDimensions();
-  const [deleteTarget, setDeleteTarget] = useState(null); // { id, name }
-  const [refreshing, setRefreshing]   = useState(false);
+
+  const [sessions, setSessions]   = useState(null);   // null = first load
+  const [history, setHistory]     = useState(null);
+  const [deleteTarget, setTarget] = useState(null);
+  const [refreshing, setRefresh]  = useState(false);
+  const [dialOpen, setDialOpen]   = useState(false);
+  const swipeRefs = useRef({});
+
+  /** Last run per template NAME — the only link between a template and its history. */
+  const loadHistory = async () => {
+    try {
+      const { data } = await supabase.from('workout_sessions').select(`
+          id, name, started_at, duration_secs, timeline,
+          workout_exercises (
+            id, parent_id, exercise_type, exercise_name, body_section, status,
+            weight_kg, sets_planned, sets_completed, reps, duration_secs, perf_order
+          )
+        `).order('started_at', { ascending: false }).limit(SESSION_LIMIT);
+      if (!data) return {};
+      const byName = {};
+      // Rows arrive newest first, so the first sighting of a name is its last run.
+      for (const d of deriveAll(shapeSessions(data))) {
+        if (!byName[d.name]) byName[d.name] = d;
+      }
+      return byName;
+    } catch (e) {
+      console.warn('[Train] history lookup failed:', e?.message ?? e);
+      return {};
+    }
+  };
 
   // Render the cache first so the list is up instantly and works with no
   // connectivity, then reconcile with Supabase in the background.
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true;
-      loadSessions().then(s => { if (alive) setSessions(s); });
-      syncSessions().then(s => { if (alive) setSessions(s); });
-      return () => { alive = false; };
-    }, [])
-  );
+  useFocusEffect(useCallback(() => {
+    let alive = true;
+    loadSessions().then(v => { if (alive) setSessions(v); });
+    syncSessions().then(v => { if (alive) setSessions(v); });
+    loadHistory().then(v => { if (alive) setHistory(v); });
+    return () => { alive = false; };
+  }, []));
 
   const onRefresh = async () => {
-    setRefreshing(true);
-    setSessions(await syncSessions());
-    setRefreshing(false);
+    setRefresh(true);
+    const [list, hist] = await Promise.all([syncSessions(), loadHistory()]);
+    setSessions(list); setHistory(hist);
+    setRefresh(false);
   };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     await deleteSession(deleteTarget.id);
     setSessions(await loadSessions());
-    setDeleteTarget(null);
+    setTarget(null);
   };
 
-  const renderSession = ({ item }) => {
-    const bodyAreas = getBodyAreas(item.exercises);
+  const startSession  = (item) => navigation.navigate('Training', { session: item });
+  const editSession   = (item) => navigation.navigate('SessionEditor', { session: item });
+
+  const startQuick = () => {
+    setDialOpen(false);
+    navigation.navigate('Training', {
+      adHoc: true,
+      session: {
+        id: null,
+        name: `Quick Training — ${new Date().toLocaleDateString('en', { month: 'short', day: 'numeric' })}`,
+        exercises: [],
+        restTimerSecs: peekPrefs().restTimerSecs,
+      },
+    });
+  };
+
+  const newSession = () => { setDialOpen(false); navigation.navigate('SessionEditor', { session: null }); };
+
+  /**
+   * What to put in the hero: the session you have not trained for longest.
+   *
+   * That is the rotation answer — with Push/Pull/Legs it names the one that is
+   * actually due — and for someone who runs a single template it names that
+   * template. A session never run sorts as "longest ago", because one you just
+   * built and have not tried is exactly the one you are about to.
+   */
+  const nextUp = useMemo(() => {
+    if (!sessions?.length) return null;
+    const lastDay = (x) => history?.[x.name]?.dayKey ?? '';   // '' sorts first
+    return [...sessions].sort((a, b) => lastDay(a).localeCompare(lastDay(b)))[0];
+  }, [sessions, history]);
+
+  const lastRunLine = (item) => {
+    const h = history?.[item.name];
+    if (!h) return 'Never run';
+    const bits = [dayLabel(h.dayKey)];
+    if (h.volumeKg > 0)   bits.push(fmtTonnes(h.volumeKg));
+    if (h.durationSecs)   bits.push(fmtDur(h.durationSecs));
+    return `Last run ${bits.join(' · ')}`;
+  };
+
+  // ─── Rows ─────────────────────────────────────────────────────────────────
+  const renderRow = ({ item }) => {
+    const areas = getBodyAreas(item.exercises);
+    const count = item.exercises?.length ?? 0;
+
+    // Edit and delete live behind a swipe so the row itself is one big START.
+    const actions = (progress) => {
+      const slide = progress.interpolate({
+        inputRange: [0, 1], outputRange: [160, 0], extrapolate: 'clamp',
+      });
+      return (
+        <Animated.View style={[s.actions, { transform: [{ translateX: slide }] }]}>
+          <TouchableOpacity style={[s.action, s.actionEdit]} activeOpacity={0.8}
+            onPress={() => { swipeRefs.current[item.id]?.close(); editSession(item); }}
+            accessibilityRole="button" accessibilityLabel={`Edit ${item.name}`}>
+            <Icon name="edit" size={IconSize.row} color={Colors.text} />
+            <Text style={s.actionTxt}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.action, s.actionDelete]} activeOpacity={0.8}
+            onPress={() => { swipeRefs.current[item.id]?.close(); setTarget({ id: item.id, name: item.name }); }}
+            accessibilityRole="button" accessibilityLabel={`Delete ${item.name}`}>
+            <Icon name="trash" size={IconSize.row} color={Colors.danger} />
+            <Text style={[s.actionTxt, { color: Colors.danger }]}>Delete</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      );
+    };
+
     return (
-      <View style={styles.card}>
-        <View style={styles.cardContent}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.sessionName}>{item.name}</Text>
-            <Text style={styles.exerciseCount}>
-              {item.exercises?.length ?? 0} exercise{item.exercises?.length !== 1 ? 's' : ''}
+      <Swipeable
+        ref={r => { swipeRefs.current[item.id] = r; }}
+        renderRightActions={actions}
+        overshootRight={false}
+        friction={1.6}
+      >
+        <TouchableOpacity style={s.row} onPress={() => startSession(item)}
+                          activeOpacity={0.75} accessibilityRole="button"
+                          accessibilityLabel={`Start ${item.name}`}>
+          <View style={{ flex: 1, minWidth: 0, gap: Spacing.xs }}>
+            <Text style={s.rowName} numberOfLines={1}>{item.name}</Text>
+            <AreaGlyphs areas={areas} size={IconSize.meta} />
+            <Text style={s.rowMeta} numberOfLines={1}>
+              {count} exercise{count === 1 ? '' : 's'} · {lastRunLine(item)}
             </Text>
           </View>
-
-          {/* Body area chips */}
-          {bodyAreas.length > 0 && (
-            <View style={styles.chipRow}>
-              {bodyAreas.map((area, idx) => (
-                <View key={idx} style={[
-                  styles.chip,
-                  area === 'Warmup'    && styles.chipWarmup,
-                  area === 'Intervals' && styles.chipIntervals,
-                ]}>
-                  {CHIP_ICON[area] ? (
-                    <Icon name={CHIP_ICON[area]} size={IconSize.pip}
-                          color={area === 'Warmup' ? Colors.warn : Colors.ember} />
-                  ) : null}
-                  <Text style={styles.chipText} numberOfLines={1}>{area}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Actions */}
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={styles.editBtn}
-            onPress={() => navigation.navigate('SessionEditor', { session: item })}
-            activeOpacity={0.7}
-          >
-            <Icon name="edit" size={IconSize.meta} color={Colors.textSecondary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            onPress={() => setDeleteTarget({ id: item.id, name: item.name })}
-            activeOpacity={0.7}
-          >
-            <Icon name="trash" size={IconSize.meta} color={Colors.danger} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.startBtn}
-            onPress={() => navigation.navigate('Training', { session: item })}
-            activeOpacity={0.8}
-          >
-            <Icon name="play" size={IconSize.meta} color={Colors.background} />
-            <Text style={styles.startBtnText}>Start</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+          <Icon name="chevronRight" size={IconSize.row} color={Colors.textMuted} />
+        </TouchableOpacity>
+      </Swipeable>
     );
   };
 
+  // ─── Hero ─────────────────────────────────────────────────────────────────
+  const Hero = () => {
+    if (!nextUp) return null;
+    const areas = getBodyAreas(nextUp.exercises);
+    return (
+      <>
+        <Text style={s.section}>Next up</Text>
+        <View style={s.hero}>
+          <Text style={s.heroName} numberOfLines={2}>{nextUp.name}</Text>
+          <AreaGlyphs areas={areas} size={IconSize.section} tint={Colors.text} max={6} />
+          <Text style={s.heroMeta}>{lastRunLine(nextUp)}</Text>
+          <TouchableOpacity style={s.heroStart} onPress={() => startSession(nextUp)}
+                            activeOpacity={0.85} accessibilityRole="button"
+                            accessibilityLabel={`Start ${nextUp.name}`}>
+            <Icon name="play" size={IconSize.tab} color={onAccent} />
+            <Text style={s.heroStartTxt}>START</Text>
+          </TouchableOpacity>
+        </View>
+        {sessions.length > 1 ? <Text style={s.section}>Your sessions</Text> : null}
+      </>
+    );
+  };
+
+  const loading = sessions == null;
+  const rest    = nextUp ? (sessions ?? []).filter(x => x.id !== nextUp.id) : (sessions ?? []);
+
   return (
-    <View style={[styles.container, { height: windowHeight }]}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
+    <View style={[s.container, { height: windowHeight }]}>
+      <StatusBar barStyle="light-content" backgroundColor={Colors.base} />
 
       {/* Header. The four-circle cluster that used to live here is gone: the
-          dashboard and metrics are tabs now, and the account moved to You —
-          it was previously reached by tapping your own email address, because
-          the row had no space left for a fifth circle. */}
-      <View style={[styles.header, { paddingTop: insets.top + Spacing.md }]}>
+          dashboard and metrics are tabs now, and the account moved to You. */}
+      <View style={[s.header, { paddingTop: insets.top + Spacing.md }]}>
         {/* Long-press the wordmark for the hidden icon proof sheet (Dev → Icons).
             Linked from nowhere else; see src/screens/DevIconsScreen.js. */}
-        <TouchableOpacity
-          style={styles.accountBtn}
-          onLongPress={() => navigation.navigate('DevIcons')}
-          delayLongPress={800}
-          activeOpacity={1}
-        >
-          <Text style={styles.headerTitle}>Kinetic</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {sessions.length
-              ? `${sessions.length} session${sessions.length === 1 ? '' : 's'}`
-              : 'Your training sessions'}
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1}
+                          onLongPress={() => navigation.navigate('DevIcons')}
+                          delayLongPress={800}>
+          <Text style={s.title}>Kinetic</Text>
+          <Text style={s.subtitle} numberOfLines={1}>
+            {loading ? 'Loading…'
+              : sessions.length
+                ? `${sessions.length} session${sessions.length === 1 ? '' : 's'}`
+                : 'Your training sessions'}
           </Text>
         </TouchableOpacity>
-
-        <View style={{ flexDirection: 'row', gap: Spacing.sm, flexShrink: 0 }}>
-          <TouchableOpacity
-            style={[styles.addBtn, styles.quickBtn]}
-            onPress={() => navigation.navigate('Training', {
-              adHoc: true,
-              session: {
-                id: null,
-                name: `Quick Training — ${new Date().toLocaleDateString('en',{month:'short',day:'numeric'})}`,
-                exercises: [],
-                restTimerSecs: peekPrefs().restTimerSecs,
-              },
-            })}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="Start a quick session"
-          >
-            <Icon name="bolt" size={IconSize.row} color={Colors.gold} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={() => navigation.navigate('SessionEditor', { session: null })}
-            activeOpacity={0.8}
-            accessibilityRole="button"
-            accessibilityLabel="New session"
-          >
-            <Icon name="add" size={IconSize.row} color={onAccent} />
-          </TouchableOpacity>
-        </View>
       </View>
 
-      {sessions.length === 0 ? (
-        <View style={styles.emptyState}>
-          <Icon name="emptySessions" size={IconSize.empty} color={Colors.textFaint} />
-          <Text style={styles.emptyTitle}>No sessions yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Tap the + button to create your first training session
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyBtn}
-            onPress={() => navigation.navigate('SessionEditor', { session: null })}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.emptyBtnText}>Create Session</Text>
-          </TouchableOpacity>
-        </View>
+      {loading ? (
+        <SkeletonList count={4} />
+      ) : sessions.length === 0 ? (
+        <EmptyState
+          icon="emptySessions"
+          title="No sessions yet"
+          message="Build a session once and it is two taps away for good."
+          actionLabel="Create a session"
+          onAction={newSession}
+        />
       ) : (
         <FlatList
-          data={sessions}
+          data={rest}
           keyExtractor={item => item.id}
-          renderItem={renderSession}
-          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + Spacing.xl }]}
+          renderItem={renderRow}
+          ListHeaderComponent={Hero}
+          contentContainerStyle={[s.list, { paddingBottom: insets.bottom + 120 }]}
           style={{ flex: 1, minHeight: 0 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.ember} />
           }
         />
       )}
 
-      {/* Delete confirmation */}
-      {deleteTarget && (
-        <View style={styles.confirmOverlay}>
-          <View style={styles.confirmBox}>
-            <Text style={styles.confirmTitle}>Delete Session?</Text>
-            <Text style={styles.confirmMsg}>
-              "{deleteTarget.name}" will be permanently deleted.
-            </Text>
-            <View style={styles.confirmBtns}>
-              <TouchableOpacity style={styles.confirmCancelBtn} onPress={() => setDeleteTarget(null)} activeOpacity={0.8}>
-                <Text style={styles.confirmCancelTxt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmDeleteBtn} onPress={confirmDelete} activeOpacity={0.8}>
-                <Text style={styles.confirmDeleteTxt}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+      {/* ── Speed dial (decision 6) ──────────────────────────────────── */}
+      {dialOpen && (
+        <TouchableOpacity style={s.dialScrim} activeOpacity={1}
+                          onPress={() => setDialOpen(false)} accessible={false} />
       )}
+      <View style={[s.dial, { bottom: insets.bottom + Spacing.lg }]} pointerEvents="box-none">
+        {dialOpen && (
+          <>
+            <TouchableOpacity style={s.dialItem} onPress={startQuick} activeOpacity={0.85}
+                              accessibilityRole="button">
+              <Text style={s.dialLabel}>Quick session</Text>
+              <View style={[s.dialBtn, s.dialQuick]}>
+                <Icon name="bolt" size={IconSize.row} color={Colors.gold} />
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.dialItem} onPress={newSession} activeOpacity={0.85}
+                              accessibilityRole="button">
+              <Text style={s.dialLabel}>New session</Text>
+              <View style={[s.dialBtn, s.dialQuick]}>
+                <Icon name="edit" size={IconSize.row} color={Colors.ice} />
+              </View>
+            </TouchableOpacity>
+          </>
+        )}
+        <TouchableOpacity style={[s.dialBtn, s.dialMain]} onPress={() => setDialOpen(o => !o)}
+                          activeOpacity={0.85} accessibilityRole="button"
+                          accessibilityLabel={dialOpen ? 'Close menu' : 'Create'}>
+          <Icon name={dialOpen ? 'close' : 'add'} size={IconSize.tab} color={onAccent} />
+        </TouchableOpacity>
+      </View>
+
+      <ConfirmDialog
+        visible={!!deleteTarget}
+        onDismiss={() => setTarget(null)}
+        icon="trash"
+        iconColor={Colors.danger}
+        title="Delete session?"
+        message={deleteTarget ? `“${deleteTarget.name}” goes for good. Sessions you have already trained stay in your stats.` : ''}
+        dismissLabel="Keep it"
+        actions={[{ label: 'Delete', tone: 'danger', onPress: confirmDelete }]}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-  },
-  headerTitle: {
-    ...Typography.h1,
-    color: Colors.primary,
-    letterSpacing: 1,
-  },
-  headerSubtitle: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-    flexShrink: 1,
-  },
-  // The signed-in address doubles as the entry point to the account sheet —
-  // the header's button row has no space left for a fifth circle.
-  accountBtn: {
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  quickBtn: { backgroundColor: Colors.raised, borderWidth: 1, borderColor: Colors.line },
-  addBtn: {
-    width: Touch.min,
-    height: Touch.min,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.orange,
-  },
-  list: {
-    padding: Spacing.md,
-    paddingBottom: Spacing.xxl,
-    gap: Spacing.md,
-  },
-  card: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    overflow: 'hidden',
-    ...Shadows.card,
-  },
-  cardContent: {
-    padding: Spacing.md,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
-  },
-  sessionName: {
-    ...Typography.h3,
-    color: Colors.textPrimary,
-    flex: 1,
-    marginRight: Spacing.sm,
-  },
-  exerciseCount: {
-    ...Typography.bodySmall,
-    color: Colors.textSecondary,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.surfaceRaised,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-  },
-  chipWarmup: {
-    backgroundColor: `${Colors.amber}33`,
-  },
-  chipIntervals: {
-    backgroundColor: `${Colors.primary}22`,
-  },
-  chipText: {
-    ...Typography.caption,
-    color: Colors.textSecondary,
-    fontWeight: '600',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingBottom: Spacing.md,
-    paddingTop: Spacing.xs,
-    gap: Spacing.sm,
-  },
-  editBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deleteBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.md,
-    backgroundColor: `${Colors.danger}22`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startBtn: {
-    flex: 1,
-    height: 44,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    ...Shadows.orange,
-  },
-  startBtnText: {
-    ...Typography.h3,
-    color: Colors.background,
-    fontWeight: '700',
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.xxl,
-    gap: Spacing.md,
-  },
-  emptyIcon: { fontSize: 64, marginBottom: Spacing.sm },
-  emptyTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
-  emptySubtitle: {
-    ...Typography.body, color: Colors.textSecondary,
-    textAlign: 'center', lineHeight: 24,
-  },
-  emptyBtn: {
-    marginTop: Spacing.sm,
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.xl,
-    paddingVertical: Spacing.md,
-    borderRadius: Radius.full,
-    ...Shadows.orange,
-  },
-  emptyBtnText: { ...Typography.h3, color: Colors.background, fontWeight: '700' },
+const s = StyleSheet.create({
+  container: { backgroundColor: Colors.base },
 
-  confirmOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: '#000000CC', alignItems: 'center', justifyContent: 'center', zIndex: 999,
+  header: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: Spacing.md, paddingBottom: Spacing.md,
+    borderBottomWidth: 1, borderBottomColor: Colors.line,
   },
-  confirmBox: {
+  title:    { ...Typography.h1, color: Colors.ember, letterSpacing: 1 },
+  subtitle: { ...Typography.bodySmall, color: Colors.textMuted },
+
+  list:    { padding: Spacing.md, gap: Spacing.sm },
+  section: { ...Typography.label, color: Colors.textFaint, marginTop: Spacing.md,
+             marginBottom: Spacing.xs },
+
+  // ── Hero ────────────────────────────────────────────────────────────────
+  hero: {
+    backgroundColor: Colors.surface, borderRadius: Radius.xl,
+    borderWidth: 1, borderColor: Colors.line,
+    padding: Spacing.lg, gap: Spacing.md,
+  },
+  heroName:  { ...Typography.h1, color: Colors.text },
+  heroMeta:  { ...Typography.bodySmall, color: Colors.textMuted },
+  heroStart: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: Spacing.sm, height: 64, borderRadius: Radius.md,
+    backgroundColor: Colors.ember, ...Elevation.glowEmber,
+  },
+  heroStartTxt: { ...Typography.h2, color: onAccent, letterSpacing: 1.5 },
+
+  // ── Rows ────────────────────────────────────────────────────────────────
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
     backgroundColor: Colors.surface, borderRadius: Radius.lg,
-    padding: Spacing.xl, margin: Spacing.xl, gap: Spacing.md,
-    borderWidth: 1, borderColor: Colors.border,
+    borderWidth: 1, borderColor: Colors.line,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.md,
+    minHeight: Touch.gym,
   },
-  confirmTitle: { ...Typography.h2, color: Colors.textPrimary, textAlign: 'center' },
-  confirmMsg:   { ...Typography.body, color: Colors.textSecondary, textAlign: 'center' },
-  confirmBtns:  { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.sm },
-  confirmCancelBtn: {
-    flex: 1, height: 44, borderRadius: Radius.md,
-    backgroundColor: Colors.surfaceRaised, alignItems: 'center', justifyContent: 'center',
+  rowName: { ...Typography.h3, color: Colors.text },
+  rowMeta: { ...Typography.caption, color: Colors.textMuted },
+
+  glyphRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, flexWrap: 'wrap' },
+  glyphMore: { ...Typography.caption, color: Colors.textFaint },
+
+  actions: { flexDirection: 'row', alignItems: 'stretch' },
+  action:  { width: 80, alignItems: 'center', justifyContent: 'center', gap: Spacing.xs },
+  actionEdit:   { backgroundColor: Colors.raised, borderTopLeftRadius: Radius.lg,
+                  borderBottomLeftRadius: Radius.lg },
+  actionDelete: { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.danger,
+                  borderTopRightRadius: Radius.lg, borderBottomRightRadius: Radius.lg },
+  actionTxt: { ...Typography.caption, color: Colors.text },
+
+  // ── Speed dial ──────────────────────────────────────────────────────────
+  dialScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(8,8,10,0.6)' },
+  dial:      { position: 'absolute', right: Spacing.md, alignItems: 'flex-end', gap: Spacing.sm },
+  dialItem:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  dialLabel: {
+    ...Typography.bodyMedium, color: Colors.text,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.line,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs, borderRadius: Radius.full,
   },
-  confirmCancelTxt: { ...Typography.h3, color: Colors.textSecondary },
-  confirmDeleteBtn: {
-    flex: 1, height: 44, borderRadius: Radius.md,
-    backgroundColor: Colors.danger, alignItems: 'center', justifyContent: 'center',
+  dialBtn: {
+    width: Touch.gym, height: Touch.gym, borderRadius: Radius.full,
+    alignItems: 'center', justifyContent: 'center',
   },
-  confirmDeleteTxt: { ...Typography.h3, color: Colors.textPrimary, fontWeight: '700' },
+  dialQuick: { backgroundColor: Colors.raised, borderWidth: 1, borderColor: Colors.line },
+  dialMain:  { backgroundColor: Colors.ember, ...Elevation.glowEmber },
 });

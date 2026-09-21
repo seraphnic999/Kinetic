@@ -733,13 +733,13 @@ const qam = StyleSheet.create({
   backBtn:     { width: 40 },
   title:       { ...Typography.h2, color: Colors.text, flex: 1, textAlign: 'center' },
   typeCard:    { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, backgroundColor: Colors.raised, borderRadius: Radius.lg, padding: Spacing.lg, borderWidth: 1 },
-  typeLabel:   { ...Typography.h3, fontWeight: '700' },
+  typeLabel:   { ...Typography.h3 },
   fieldLabel:  { ...Typography.label, color: Colors.textMuted },
   chipRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   chip:        { paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs + 2, borderRadius: Radius.full, backgroundColor: Colors.raised },
   chipActive:  { backgroundColor: Colors.ember },
   chipTxt:     { ...Typography.bodySmall, color: Colors.textMuted },
-  chipActiveTxt:{ color: Colors.base, fontWeight: '700' },
+  chipActiveTxt:{ color: Colors.base },
   stepperRow:  { flexDirection: 'row', gap: Spacing.sm },
   timerHint:   { ...Typography.timerInline, color: Colors.warn, alignSelf: 'flex-end', paddingBottom: 4 },
   helpTxt:     { ...Typography.bodySmall, color: Colors.textMuted, fontStyle: 'italic' },
@@ -751,9 +751,9 @@ const qam = StyleSheet.create({
   subCardTitle:{ ...Typography.label, color: Colors.textMuted },
   addSubBtn:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.xs,
                  height: 44, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.ember + '55' },
-  addSubBtnTxt:{ ...Typography.bodySmall, color: Colors.ember, fontWeight: '600' },
+  addSubBtnTxt:{ ...Typography.bodySmall, color: Colors.ember },
   confirmBtn:  { height: 56, borderRadius: Radius.full, backgroundColor: Colors.ember, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm },
-  confirmTxt:  { ...Typography.h3, color: Colors.base, fontWeight: '700' },
+  confirmTxt:  { ...Typography.h3, color: Colors.base },
 });
 
 // ─── Main screen ──────────────────────────────────────────────────────────────

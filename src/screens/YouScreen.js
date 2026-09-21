@@ -39,7 +39,7 @@ function Row({ icon, label, value, onPress, tint = Colors.textMuted, children, l
       </View>
       {children}
       {onPress && !children ? (
-        <Icon name="chevronRight" size={IconSize.meta} color={Colors.textFaint} />
+        <Icon name="chevronRight" size={IconSize.meta} color={Colors.textMuted} />
       ) : null}
     </Wrap>
   );
