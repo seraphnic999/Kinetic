@@ -24,19 +24,35 @@ asking for work that was already done:
 - `icon-prompts/99-corrections.txt` and `99-corrections-solid.txt` are both
   **spent**. Do not re-send them.
 
-Still open — one glyph, found on device on 2026-09-21:
+Nothing is open. `emptySessions` was the last one and is closed — see below.
 
-| Glyph | Where it hurts | Why it fails |
-|---|---|---|
-| `emptySessions` | The empty state on Train, the editor and the training rail — at `IconSize.empty` (72px) | Meant to read as a bare rack. It is two vertical strokes with short stubs and two feet, and at that size it resolves into two stray brackets rather than an object |
+## emptySessions — closed 2026-09-21, authored rather than generated
 
-`rest` also reads as a no-entry sign at row size, but it is no longer drawn
-anywhere — its one call site moved to `timer` — so it needs no redraw.
+The delivered redraw came back **worse than what it replaced**: narrower in
+the frame, two pairs of stubs instead of one, and — crucially — no sign at all
+that the bar was missing. It still read as two stray brackets, now with extra
+ticks.
 
-The prompt for it is `icon-prompts/99-corrections-2.txt`. Attach
-`icon-references/0-house-style.png` and paste, same as every batch before it.
-Drop the returned `emptySessions.svg` into `assets/icons-src/`, run
-`node scripts/generate-icons.mjs`, and it is in.
+That was my fault, not the generator's. The prompt asked for a **dashed**
+horizontal line to signal the absent bar, and **this build cannot render a
+dash**: `Icon.js` strokes a single path with no `strokeDasharray`, and
+`generate-icons.mjs` does not carry one. A perfect answer to that prompt would
+have arrived as `stroke-dasharray`, been silently dropped, and come through
+SOLID — which, as the prompt itself said, means the opposite thing: a rack
+with a bar in it.
+
+So the glyph is authored by hand (`scratchpad/mkrack.py`), with the dash drawn
+as three real segments. Precedent: `statusComplete`, authored the same way when
+its source used masks the generator could not fold.
+
+The shape: two uprights on feet wide enough to stand on, a J-hook with an
+upturned lip reaching inward from each post, and three dashes at resting height
+between the lips. Verified on device at 72px, which is the only size it is ever
+drawn at — every call site is `EmptyState`.
+
+**Do not re-prompt this one.** `icon-prompts/99-corrections-2.txt` is spent,
+and asking for a dash again will fail the same way until the pipeline grows
+dash support.
 
 ---
 

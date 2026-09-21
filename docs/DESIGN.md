@@ -1121,9 +1121,11 @@ Known gaps at v14:
   field.** A five-exercise combo rendered with five WeightFields is three
   screens of scrolling. The step is still 2.5 kg and each weight still carries
   its pound shadow, but the chips are not there.
-- **`emptySessions` is the one weak glyph left** (ICON-FIXES.md). The thirteen
-  corrections — `combo` and `diet` among them — were delivered and installed on
-  2026-09-20; an earlier version of this line said otherwise and was wrong.
+- **The icon set is done.** All 100 glyphs are installed and none is
+  outstanding (ICON-FIXES.md). One constraint worth knowing: the icon pipeline
+  cannot render a dashed stroke — `Icon.js` strokes one path with no
+  `strokeDasharray` — so any glyph that needs a dash must draw it as separate
+  segments. `emptySessions` does.
 - **Historic combo volume before the `parent_id` migration is unrecoverable.**
   §12.5 — the events were logged without weights, so there is nothing to
   backfill from.
