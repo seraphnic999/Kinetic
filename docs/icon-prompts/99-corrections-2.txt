@@ -1,0 +1,53 @@
+Draw icons in exactly the style of the attached reference image, which is the
+approved icon set for this app. Match its line weight, its simplicity and its
+level of detail.
+
+This is a REDRAW of one icon that already exists but came back too sparse. The
+note says what arrived and what it should be instead - the "not a ..." part
+matters as much as the rest.
+
+- Line art only. Every shape is an open stroke with rounded ends. No filled
+  shapes, no shading, no double lines.
+- Simple and plain. Draw the object, not a detailed illustration of it.
+- Draw the icon as large as it will go in its canvas, centred.
+- One icon per file.
+
+FILE FORMAT
+
+- SVG, viewBox="0 0 64 64", no width or height attributes
+- fill="none", stroke="currentColor", stroke-width="1.5",
+  stroke-linecap="round", stroke-linejoin="round"
+- Any number of <path>, <circle>, <line>, <polyline> elements
+- No transform attributes - bake positions into the coordinates
+- No <mask>, <clipPath>, <defs> or <use> - they cannot be folded into a
+  single path and the build rejects the file
+- Filename is the icon name exactly: emptySessions.svg
+
+DRAW THIS 1:
+
+emptySessions   a squat rack with no barbell on it, seen straight from the
+                front. Three things have to be legible:
+
+                1. TWO UPRIGHTS, each standing on a foot that is clearly wider
+                   than the post, so the shape reads as a rack standing on the
+                   floor rather than as two loose vertical lines.
+
+                2. A J-HOOK near the top of each upright, drawn as a small
+                   open U or J cradle that sticks INWARD, toward the other
+                   upright. These are the part that says "rack". Draw them
+                   big enough to read - an open cradle, not a short stub.
+
+                3. A DASHED HORIZONTAL LINE spanning between the two cradles,
+                   at cradle height, showing where the missing bar would sit.
+                   This is what makes the icon say EMPTY. Dashed, never solid
+                   - a solid line there is just a rack with a bar in it, which
+                   is the opposite meaning.
+
+                What arrived: two plain vertical lines with a tiny stub on
+                each and a short foot. At 72px it does not resolve into an
+                object at all - it reads as two stray brackets. NOT two bare
+                verticals, NOT a stub instead of a cradle, NOT a solid bar.
+
+                Sibling icons, so you can pitch the "emptiness" the same way:
+                emptyChart is chart axes with a DASHED baseline and no bars.
+                Use the same dashed convention here.

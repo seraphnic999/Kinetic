@@ -33,6 +33,11 @@ Still open — one glyph, found on device on 2026-09-21:
 `rest` also reads as a no-entry sign at row size, but it is no longer drawn
 anywhere — its one call site moved to `timer` — so it needs no redraw.
 
+The prompt for it is `icon-prompts/99-corrections-2.txt`. Attach
+`icon-references/0-house-style.png` and paste, same as every batch before it.
+Drop the returned `emptySessions.svg` into `assets/icons-src/`, run
+`node scripts/generate-icons.mjs`, and it is in.
+
 ---
 
 ## The corrections
