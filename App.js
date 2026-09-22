@@ -24,6 +24,7 @@ import { Colors } from './src/theme';
 import { useAuth } from './src/hooks/useAuth';
 import { drainSyncQueue } from './src/utils/syncWorkout';
 import { getExerciseHistory, refreshExerciseHistory } from './src/utils/exerciseHistory';
+import { ensureNotificationChannels } from './src/utils/notifications';
 import LoginScreen         from './src/screens/LoginScreen';
 import SessionListScreen   from './src/screens/SessionListScreen';
 import SessionEditorScreen from './src/screens/SessionEditorScreen';
@@ -182,6 +183,9 @@ export default function App() {
     // runs after the drain, so a session that just went up is reflected in
     // what "last time" says.
     const catchUp = async () => {
+      // Channels are frozen once created and are what carry the beep sound on
+      // Android, so they must exist before any timer is scheduled.
+      ensureNotificationChannels();
       await getExerciseHistory();
       await drainSyncQueue();
       await refreshExerciseHistory();

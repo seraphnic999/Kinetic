@@ -204,10 +204,10 @@ const initExerciseStates = (exercises) => {
  * Renders nothing when there is no history: a first outing has nothing to beat,
  * and an empty "no previous data" row is noise on every new exercise.
  */
-function LastTime({ exerciseName, targetReps, onTake }) {
+function LastTime({ exerciseName, targetReps, currentKg, onTake }) {
   const prev = lastFor(exerciseName);
   if (!prev) return null;
-  const s = overloadSuggestion(prev, targetReps);
+  const s = overloadSuggestion(prev, targetReps, currentKg);
 
   return (
     <View style={d.lastCard}>
@@ -221,14 +221,18 @@ function LastTime({ exerciseName, targetReps, onTake }) {
       {/* Ice, not ember: ember is the live action (SET DONE) and a suggestion
           must not compete with it. This offers; it never sets by itself. */}
       {s.suggest && onTake ? (
-        <TouchableOpacity style={d.suggestRow} onPress={() => onTake(s.weightKg)}
-                          activeOpacity={0.75} accessibilityRole="button"
-                          accessibilityLabel={`Use ${s.weightKg} kilograms — ${s.reason}`}>
+        <View style={d.suggestRow}>
           <Icon name="trendUp" size={IconSize.meta} color={Colors.ice} />
-          <Text style={d.suggestValue}>try {s.weightKg} kg</Text>
           <Text style={d.suggestWhy} numberOfLines={1}>{s.reason}</Text>
-          <Icon name="chevronRight" size={IconSize.pip} color={Colors.ice} />
-        </TouchableOpacity>
+          {/* A chip, not a full-width row. It sits immediately above the weight
+              field, and as a row it was large enough to catch a thumb aimed at
+              something else — which silently rewrote the weight with no undo. */}
+          <TouchableOpacity style={d.suggestChip} onPress={() => onTake(s.weightKg)}
+                            activeOpacity={0.75} accessibilityRole="button"
+                            accessibilityLabel={`Use ${s.weightKg} kilograms — ${s.reason}`}>
+            <Text style={d.suggestValue}>use {s.weightKg} kg</Text>
+          </TouchableOpacity>
+        </View>
       ) : s.reason ? (
         // Say why there is no bump. "3 of 5 sets last time" is information;
         // silence would read as the feature being broken.
@@ -257,6 +261,7 @@ function RegularDetail({ exercise, state, onUpdate }) {
 
       <LastTime exerciseName={getExerciseName(exercise)}
                 targetReps={state.reps}
+                currentKg={state.weight}
                 onTake={v => onUpdate({ weight: v })} />
 
       <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })} />
@@ -348,7 +353,7 @@ function ComboDetail({ exercise, state, onUpdate }) {
 
               {isOpen && (
                 <View style={d.stationBody}>
-                  <LastTime exerciseName={nm} targetReps={r}
+                  <LastTime exerciseName={nm} targetReps={r} currentKg={w}
                             onTake={v => setW(idx, v)} />
                   <WeightField value={w} onChange={v => setW(idx, v)} />
                   <RepsField   value={r} onChange={v => setR(idx, v)} />
@@ -541,9 +546,11 @@ const d = StyleSheet.create({
   suggestRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm,
                  backgroundColor: Colors.iceDim, minHeight: Touch.min,
                  borderTopWidth: 1, borderTopColor: Colors.line,
-                 paddingHorizontal: Spacing.md },
-  suggestValue:{ ...Typography.metric, color: Colors.ice },
-  suggestWhy:  { ...Typography.caption, color: Colors.textMuted, flex: 1, textAlign: 'right' },
+                 paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  suggestChip: { borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.ice,
+                 paddingHorizontal: Spacing.md, paddingVertical: Spacing.xs },
+  suggestValue:{ ...Typography.bodyMedium, color: Colors.ice },
+  suggestWhy:  { ...Typography.caption, color: Colors.textMuted, flex: 1 },
   suggestWhyOnly: { ...Typography.caption, color: Colors.textFaint,
                     paddingHorizontal: Spacing.md, paddingBottom: Spacing.sm },
   lastLabel:   { ...Typography.label, color: Colors.textFaint },
@@ -981,12 +988,19 @@ export default function TrainingScreen({ navigation, route }) {
   // re-rendering once a second for the other 95% of a session.
   const [setNow, setSetNow] = useState(Date.now());
 
+  // Which exercise this rest belongs to. Rest exists BETWEEN sets of one
+  // exercise, so when it ends the right place to be is back in that exercise —
+  // not in the list, hunting for the row you were already on.
+  const restFromId = useRef(null);
+
   const [restSec, setRestSec]         = useState(session?.restTimerSecs ?? 60);
   const [restActive, setRestActive]   = useState(false);
   const restEndTimeRef                = useRef(null); // absolute ms timestamp rest is due to end
 
   // Navigation state
   const [selectedId, setSelectedId] = useState(null);
+  const selectedIdRef = useRef(null);
+  useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
 
   // Exercise states
   const [exStates, setExStates] = useState(() => initExerciseStates(session?.exercises));
@@ -1086,10 +1100,11 @@ export default function TrainingScreen({ navigation, route }) {
       restEndTimeRef.current = null;
       setRestSec(session?.restTimerSecs ?? 60);
       setRestActive(false);
+      returnToExercise();
     } else {
       setRestSec(remaining);
     }
-  }, [session, addEvent]);
+  }, [session, addEvent, returnToExercise]);
 
   useEffect(() => {
     if (!restActive) return;
@@ -1241,7 +1256,8 @@ export default function TrainingScreen({ navigation, route }) {
     setPerfOrder(prev => prev.includes(id) ? prev : [...prev, id]);
   }, []);
 
-  const activateRest = useCallback(() => {
+  const activateRest = useCallback((fromId = null) => {
+    restFromId.current = fromId;
     const secs = session?.restTimerSecs ?? 60;
     restEndTimeRef.current = Date.now() + secs * 1000;
     addEvent('rest_start', { durationSecs: secs });
@@ -1253,6 +1269,30 @@ export default function TrainingScreen({ navigation, route }) {
     restNotifRef.current = scheduleTimerNotification(secs, 'Rest over — time to lift! 💪', 'beep_rest.wav');
   }, [session, addEvent]);
 
+  /**
+   * Rest is over: reopen the exercise it came from, if sets remain.
+   *
+   * Most people do every set of a lift before moving on, so landing back in
+   * the list meant scrolling to find the row you had just been using — and
+   * during rest the hero pushes that row down the screen, so it was not even
+   * where you left it.
+   *
+   * Silent when the exercise is finished or was removed: then the list IS the
+   * right place, because the next decision is which exercise comes next.
+   */
+  const returnToExercise = useCallback(() => {
+    const id = restFromId.current;
+    restFromId.current = null;
+    if (!id) return;
+    // Already somewhere on purpose — most often because stopRest was called by
+    // starting a set on a DIFFERENT exercise, and yanking back to the previous
+    // one would be the opposite of helpful.
+    if (selectedIdRef.current) return;
+    const st = exStatesRef.current[id];
+    if (!st || st.status === 'complete' || !(st.setsLeft > 0)) return;
+    setSelectedId(id);
+  }, []);
+
   // Cut rest short — the athlete is back under the bar, so the countdown and
   // its "rest over" notification are no longer wanted.
   const stopRest = useCallback(() => {
@@ -1262,7 +1302,8 @@ export default function TrainingScreen({ navigation, route }) {
     addEvent('rest_end', { interrupted: true });
     setRestSec(session?.restTimerSecs ?? 60);
     setRestActive(false);
-  }, [session, addEvent]);
+    returnToExercise();
+  }, [session, addEvent, returnToExercise]);
 
   // ─── Auto-complete check ─────────────────────────────────────────────────
   // Skipped in ad-hoc mode: there the exercise list is built as you go, so
@@ -1419,8 +1460,41 @@ export default function TrainingScreen({ navigation, route }) {
       });
       return { ...prev, [id]: { ...st, setsLeft, setsCompleted, status, setStartedAt: null } };
     });
-    activateRest();
+    activateRest(id);
   }, [activateRest, session, addEvent]);
+
+/**
+ * The body parts inside a combo, as glyphs.
+ *
+ * A combo row used to read "2 exercises · 3 sets" with the same clover icon as
+ * every other combo — so a session with three of them offered no way to tell
+ * them apart without opening each in turn, mid-set.
+ *
+ * Deduplicated and in the order they are trained, capped so a five-station
+ * combo does not push the pips off the row.
+ */
+function ComboParts({ exercise, tint, max = 4 }) {
+  const parts = [];
+  for (const sub of exercise.subExercises ?? []) {
+    const sec = sub.bodySection === 'Other'
+      ? (sub.customBodySection || 'Other')
+      : sub.bodySection;
+    if (sec && !parts.includes(sec)) parts.push(sec);
+  }
+  if (!parts.length) return null;
+
+  const shown = parts.slice(0, max);
+  const rest = parts.length - shown.length;
+  return (
+    <View style={styles.comboParts}>
+      {shown.map(sec => (
+        <Icon key={sec} name={SECTION_ICON[sec] ?? 'bodyOther'}
+              size={IconSize.meta} color={tint} />
+      ))}
+      {rest > 0 ? <Text style={styles.comboMore}>+{rest}</Text> : null}
+    </View>
+  );
+}
 
   // ─── Exercise glyphs ──────────────────────────────────────────────────────
   // Body part where there is one, equipment where there is not.
@@ -1615,6 +1689,10 @@ export default function TrainingScreen({ navigation, route }) {
 
               <View style={styles.exInfo}>
                 <Text style={styles.exName} numberOfLines={1}>{getExerciseName(item)}</Text>
+                {item.type === EXERCISE_TYPES.COMBO ? (
+                  <ComboParts exercise={item}
+                              tint={done ? Colors.gold : Colors.textMuted} />
+                ) : null}
                 <Text style={styles.exMeta} numberOfLines={1}>{getExerciseMeta(item, st)}</Text>
               </View>
 
@@ -1757,6 +1835,9 @@ const styles = StyleSheet.create({
   exInfo:    { flex: 1, minWidth: 0, gap: 2 },
   exName:    { ...Typography.h3, color: Colors.text },
   exMeta:    { ...Typography.bodySmall, color: Colors.textMuted },
+  comboParts:{ flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,
+               marginVertical: 1 },
+  comboMore: { ...Typography.caption, color: Colors.textFaint },
   exRight:   { alignItems: 'flex-end', gap: Spacing.xs },
   exCount:   { ...Typography.caption, color: Colors.textFaint, fontVariant: ['tabular-nums'] },
 

@@ -26,11 +26,58 @@ import { Platform } from 'react-native';
 // notification is only needed for the backgrounded case.
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: false,
-    shouldPlaySound: false,
-    shouldSetBadge:  false,
+    // shouldShowAlert is deprecated in SDK 56 and shouldShowBanner /
+    // shouldShowList are REQUIRED — the old shape left both unset, so
+    // foreground presentation was whatever the default happened to be.
+    shouldShowBanner: false,
+    shouldShowList:   false,
+    shouldPlaySound:  false,
+    shouldSetBadge:   false,
   }),
 });
+
+/**
+ * Android notification channels — one per sound.
+ *
+ * On Android 8 and above the SOUND IS A PROPERTY OF THE CHANNEL, not of the
+ * notification. `content.sound` is simply ignored there. No channels were ever
+ * created, so every timer that fired in the background used whatever the
+ * default channel plays — not the bundled beeps, and on some devices nothing
+ * at all. The custom WAVs have been shipped in the APK and unused.
+ *
+ * A channel's settings are also FROZEN after creation: Android keeps the
+ * user's version, and re-creating with the same id changes nothing. So the ids
+ * carry a version suffix — changing a sound later means a new id, not an edit.
+ */
+const CHANNELS = {
+  'beep_rest.wav':     { id: 'rest-v1',     name: 'Rest timer' },
+  'beep_interval.wav': { id: 'interval-v1', name: 'Interval changes' },
+  'beep_complete.wav': { id: 'complete-v1', name: 'Timer complete' },
+};
+
+let _channelsReady = false;
+
+export const ensureNotificationChannels = async () => {
+  if (Platform.OS !== 'android' || _channelsReady) return;
+  try {
+    for (const [sound, { id, name }] of Object.entries(CHANNELS)) {
+      await Notifications.setNotificationChannelAsync(id, {
+        name,
+        importance: Notifications.AndroidImportance.HIGH,
+        sound,                       // the bundled WAV, by filename
+        vibrationPattern: [0, 250, 150, 250],
+        // A rest timer finishing is the whole point of the notification, so it
+        // should arrive even when the phone is set to show nothing on the lock
+        // screen — the screen is usually face-down on a bench.
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        enableVibrate: true,
+      });
+    }
+    _channelsReady = true;
+  } catch (e) {
+    console.warn('[notifications] channel setup failed:', e);
+  }
+};
 
 let _permissionGranted = false;
 
@@ -39,6 +86,7 @@ export const requestNotificationPermissions = async () => {
   try {
     const { status } = await Notifications.requestPermissionsAsync();
     _permissionGranted = status === 'granted';
+    if (_permissionGranted) await ensureNotificationChannels();
   } catch (e) {
     console.warn('[notifications] permission request failed:', e);
     _permissionGranted = false;
@@ -57,7 +105,8 @@ export const scheduleTimerNotification = async (seconds, body, soundFile = 'beep
       content: {
         title: 'Kinetic',
         body,
-        sound: soundFile,   // must match filename declared in app.json plugin sounds array
+        // iOS reads this; Android ignores it and uses the channel's sound.
+        sound: soundFile,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       },
       // expo-notifications 56 rejects a bare { seconds } trigger — it needs an
@@ -68,6 +117,9 @@ export const scheduleTimerNotification = async (seconds, body, soundFile = 'beep
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: Math.ceil(seconds),
         repeats: false,
+        // Without this the notification lands on the default channel and the
+        // bundled sound never plays, however correctly it is named above.
+        channelId: CHANNELS[soundFile]?.id ?? CHANNELS['beep_rest.wav'].id,
       },
     });
     return id;

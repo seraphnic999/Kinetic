@@ -27,7 +27,7 @@ export const STEP_KG = 2.5;
  *   weightKg  the weight to offer (only meaningful when `suggest`)
  *   reason    short, human, and always the ACTUAL reason — shown to you
  */
-export function overloadSuggestion(last, targetReps) {
+export function overloadSuggestion(last, targetReps, currentKg = null) {
   if (!last || !(last.weightKg > 0)) {
     return { suggest: false, weightKg: null, reason: null };
   }
@@ -62,6 +62,15 @@ export function overloadSuggestion(last, targetReps) {
   }
 
   const next = Math.round((last.weightKg + STEP_KG) * 100) / 100;
+
+  // Never suggest going backwards. The weight loaded now can already be above
+  // last session's — a template that was edited, or a weight raised earlier in
+  // this very session — and "use 102.5 kg" under a field reading 120 is not a
+  // suggestion, it is the app telling you to undo your own progress.
+  if (Number.isFinite(Number(currentKg)) && Number(currentKg) >= next) {
+    return { suggest: false, weightKg: null, reason: null };
+  }
+
   return {
     suggest: true,
     weightKg: next,

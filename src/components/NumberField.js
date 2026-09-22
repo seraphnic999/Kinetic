@@ -22,6 +22,7 @@ import { Colors, Typography, Spacing, Radius, IconSize, Touch, onAccent } from '
 import { Icon } from './Icon';
 import { lbLabel } from '../utils/units';
 import { platesFor, perSideLabel } from '../utils/plates';
+import { getPrefs, setPref, peekPrefs, WEIGHT_STEPS } from '../utils/prefs';
 
 /** Trailing zeros are noise on a weight: 80, not 80.0 — but 82.5 stays 82.5. */
 const fmt = (n) => {
@@ -34,7 +35,7 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 /** Shared frame: label, ± flanking a tappable value, chips beneath. */
 function Field({
   label, value, onChange, min, max, step, chips, unit, shadow, disabled,
-  keyboard = 'numeric', hint = false, footer = null,
+  keyboard = 'numeric', hint = false, footer = null, stepRow = null,
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
@@ -105,6 +106,8 @@ function Field({
           <Icon name="add" size={IconSize.row} color={disabled ? Colors.textMuted : Colors.text} />
         </TouchableOpacity>
       </View>
+
+      {stepRow}
 
       {chips?.length ? (
         <View style={s.chips}>
@@ -177,8 +180,61 @@ function PlateBreakdown({ value }) {
   );
 }
 
-/** Plate-math weight. 2.5 kg is one pair of the smallest plates on the rack. */
+/**
+ * How far one press of ± moves the weight.
+ *
+ * 2.5 kg used to be the only answer — one pair of the smallest plates on a
+ * barbell. That is right for a barbell and wrong for most of a session:
+ * dumbbells climb in 1s, a cable stack in 2.5s or 5s, and a machine with a
+ * small add-on wants 0.5. Locked to 2.5, every other machine forced you to
+ * either type the number or accept a weight you did not actually lift.
+ *
+ * The choice is remembered, because it is a fact about your gym rather than
+ * about this set.
+ */
+function StepChoice({ value, onChange }) {
+  return (
+    <View style={s.stepRow}>
+      <Text style={s.stepLabel}>STEP</Text>
+      {WEIGHT_STEPS.map(k => {
+        const on = Math.abs(k - value) < 0.001;
+        return (
+          <TouchableOpacity
+            key={k}
+            style={[s.stepChip, on && s.stepChipOn]}
+            onPress={() => onChange(k)}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            accessibilityLabel={`Step by ${k} kilograms`}
+          >
+            <Text style={[s.stepTxt, on && s.stepTxtOn]}>{k}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      <Text style={s.stepUnit}>kg</Text>
+    </View>
+  );
+}
+
+/** Plate-math weight, stepping by whatever increment this gym needs. */
 export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plates = true }) {
+  // Seeded synchronously from the cached prefs so the first render already has
+  // the right step — a set sheet that opens on 2.5 and then flicks to 1 reads
+  // as a bug even though it settles correctly.
+  const [step, setStep] = useState(() => peekPrefs().weightStepKg ?? 1);
+
+  useEffect(() => {
+    let alive = true;
+    getPrefs().then(p => { if (alive) setStep(p.weightStepKg ?? 1); });
+    return () => { alive = false; };
+  }, []);
+
+  const chooseStep = (k) => {
+    setStep(k);
+    setPref('weightStepKg', k);
+  };
+
   return (
     <Field
       label={label}
@@ -186,12 +242,12 @@ export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plate
       onChange={onChange}
       min={0}
       max={500}
-      step={2.5}
-      chips={[-5, -2.5, 2.5, 5, 10]}
+      step={step}
       unit="kg"
       shadow
       hint
       disabled={disabled}
+      stepRow={<StepChoice value={step} onChange={chooseStep} />}
       footer={plates ? <PlateBreakdown value={value} /> : null}
     />
   );
@@ -244,6 +300,18 @@ const s = StyleSheet.create({
     ...Typography.statHuge, color: Colors.ember,
     paddingVertical: 0, marginVertical: 0,
   },
+
+  stepRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  stepLabel:{ ...Typography.label, color: Colors.textFaint, marginRight: Spacing.xs },
+  stepChip: { flexGrow: 1, flexShrink: 1, flexBasis: 0, height: Touch.min,
+              borderRadius: Radius.sm, backgroundColor: Colors.surface,
+              borderWidth: 1, borderColor: Colors.line,
+              alignItems: 'center', justifyContent: 'center' },
+  stepChipOn: { backgroundColor: Colors.emberDim, borderColor: Colors.ember },
+  stepTxt:   { ...Typography.bodyMedium, color: Colors.textMuted,
+               fontVariant: ['tabular-nums'] },
+  stepTxtOn: { color: Colors.ember },
+  stepUnit:  { ...Typography.caption, color: Colors.textFaint, marginLeft: Spacing.xs },
 
   chips: { flexDirection: 'row', gap: Spacing.xs },
   chip: {

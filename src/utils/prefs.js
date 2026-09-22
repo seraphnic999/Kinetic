@@ -16,7 +16,20 @@ export const DEFAULTS = {
   sounds: true,
   /** Fire a system notification when a timer finishes while backgrounded. */
   notifications: true,
+  /**
+   * How much the ± buttons move a weight, in kg.
+   *
+   * 2.5 was the original and the only option — one pair of the smallest plates
+   * on a barbell. That is right for a barbell and wrong for most of a session:
+   * dumbbells go up in 1s or 2s, cable stacks in 2.5s or 5s, and a machine with
+   * a 1 kg add-on wants 0.5. Locked to 2.5, every other machine forced either
+   * typing or accepting a weight you did not lift.
+   */
+  weightStepKg: 1,
 };
+
+/** The increments the weight field offers. 1 first — it is the common case. */
+export const WEIGHT_STEPS = [0.5, 1, 2.5];
 
 let cache = null;
 
