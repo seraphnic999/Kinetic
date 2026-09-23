@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kinetic",
     "slug": "Kinetic",
-    "version": "1.7.1",
+    "version": "1.7.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.seraphnic999.kinetic",
-      "versionCode": 18,
+      "versionCode": 19,
       "newArchEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/android-icon-foreground.png",

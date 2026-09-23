@@ -162,6 +162,52 @@ Four defects found on device and fixed in the same release:
   wrong one — three screens of scrolling, and it buries the overview.
 - Editor rest timer lost a redundant label and gained a 15-second step.
 
+## v16 · backlog items 1-4
+*2026-09-22 · 1.6.0*
+
+- **A finished session can no longer be lost.** The old sync was
+  fire-and-forget over three untransacted round trips; a failure between the
+  first and the second left a session row with no exercises, which reads as a
+  session that moved nothing. Now the payload goes to a durable outbox first
+  and up as one idempotent `log_workout` RPC.
+- **What you did last time**, on the row, from a local cache — and
+  **plate breakdown** under the weight field.
+- **Overload suggestions** on the hit-all-sets rule, and **adding an exercise
+  mid-session** without leaving the session.
+
+## v17 · correct or delete a logged session
+*2026-09-22 · 1.7.0*
+
+A tapped-wrong weight was permanent, so the history could only be trusted as
+far as the last mistake. Session Detail can now fix or remove one.
+
+## v18 · five fixes from the first real training session
+*2026-09-23 · 1.7.1*
+
+The first release shaped by training with the app rather than testing it.
+
+- **Weight increments of 0.5 / 1 / 2.5**, defaulting to 1 — 2.5 was the only
+  step, and it was the wrong one for most lifts.
+- **An edited weight now survives the rest timer.** It was being re-snapped to
+  the increment on the way back, so a deliberate 61 kg became 60 again.
+- **After a rest, you land back on the exercise you were doing**, not on the
+  list — you almost always have another set of it to do.
+- **Combo rows show the body parts involved**; the combo glyph alone made two
+  different combos indistinguishable.
+- **Timers keep time and still beep in the background.** The bundled WAVs had
+  never once played: on Android the sound is a property of the notification
+  *channel*, and no channels existed. Three now do.
+
+## v19 · intervals tell the truth
+*2026-09-23 · 1.7.2*
+
+- **The first walk now beeps.** The beep fired only when a phase ran *out*, so
+  every transition was announced except the one that starts the exercise.
+- **Changing the interval count moves the total, not just the marker.** The
+  stepper wrote `repsLeft` and left `reps` frozen, so the progress bar and the
+  total-remaining readout were measured against a plan that no longer existed.
+  The row subtitle and the logged session were reading that stale plan too.
+
 ---
 
 # Part 1.5 — Decided, 2026-09-21

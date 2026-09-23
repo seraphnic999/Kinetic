@@ -135,7 +135,7 @@ const getExerciseMeta = (ex, st) => {
       return `${ex.speedKmh ?? 6}km/h · ${ex.inclinePct ?? 0}% incline · ${formatTime(ex.lengthSecs ?? 600)}`;
     if (cardioType === CARDIO_TYPES.STAIRS)
       return `${ex.speedKmh ?? 6}km/h · ${formatTime(ex.lengthSecs ?? 600)}`;
-    return `${ex.reps} reps · ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
+    return `${st.reps ?? ex.reps} reps · ${ex.intervalLength}s run / ${ex.walkDuration ?? 60}s walk`;
   }
   return '';
 };
@@ -1358,7 +1358,15 @@ export default function TrainingScreen({ navigation, route }) {
               completedDurationSecs: (ex.lengthSecs ?? 600) - (st?.timeLeft ?? ex.lengthSecs ?? 600),
               speedKmh: st?.speedKmh ?? ex.speedKmh,
               ...(cardioType === CARDIO_TYPES.TREADMILL ? { inclinePct: st?.inclinePct ?? ex.inclinePct } : {}) };
-          return { ...base, cardioType, plannedReps: ex.reps, completedReps: ex.reps - (st?.repsLeft ?? 0), intervalLengthSecs: ex.intervalLength };
+          // st.reps, not ex.reps: the live plan, which the athlete may have
+          // changed mid-exercise. Reading the template here recorded a session
+          // that did not happen.
+          {
+            const planned = st?.reps ?? ex.reps ?? 0;
+            return { ...base, cardioType, plannedReps: planned,
+                     completedReps: planned - (st?.repsLeft ?? 0),
+                     intervalLengthSecs: ex.intervalLength };
+          }
         }
         return base;
       }),
@@ -1534,7 +1542,11 @@ function ComboParts({ exercise, tint, max = 4 }) {
     const willRun  = !st.isRunning;
     if (starting) addToPerfOrder(id);
     const newTimeLeft = starting ? st.walkDuration : st.timeLeft;
+    // Starting IS a phase change — from nothing to walking — and it is the one
+    // the tick can never announce, because the tick only speaks when a phase
+    // runs out. Resuming from a pause counts too: both mean "go now".
     if (willRun) {
+      playIntervalBeep();
       intervalsPhaseEndRef.current = Date.now() + newTimeLeft * 1000;
       scheduleTimerNotification(newTimeLeft, 'Intervals — start running!', 'beep_interval.wav')
         .then(nid => { intervalsNotifRef.current = nid; });
@@ -1760,7 +1772,18 @@ function ComboParts({ exercise, tint, max = 4 }) {
                 && getCardioType(selectedEx) === CARDIO_TYPES.INTERVALS && (
                 <IntervalsDetail exercise={selectedEx} state={selectedState}
                   onToggle={() => toggleIntervals(selectedId)}
-                  onUpdateReps={v => patch({ repsLeft: Math.max(0, v) })} />
+                  onUpdateReps={v => setExStates(prev => {
+                    const st = prev[selectedId];
+                    // The stepper is labelled REPS REMAINING, so setting it to
+                    // N means "N still to do" — and the new TOTAL is therefore
+                    // what is done plus N. Patching repsLeft alone left `reps`
+                    // frozen at the original count, so the progress bar and the
+                    // total-remaining readout were computed against a plan that
+                    // no longer existed: the marker moved, the total never did.
+                    const done = Math.max(0, (st.reps ?? 0) - (st.repsLeft ?? 0));
+                    const left = Math.max(0, v);
+                    return { ...prev, [selectedId]: { ...st, repsLeft: left, reps: done + left } };
+                  })} />
               )}
               {selectedEx.type === EXERCISE_TYPES.INTERVALS
                 && getCardioType(selectedEx) !== CARDIO_TYPES.INTERVALS && (
