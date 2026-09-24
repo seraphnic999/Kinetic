@@ -18,6 +18,19 @@
 export const STEP_KG = 2.5;
 
 /**
+ * How much to add, IN THE UNITS THE FIELD ASKS FOR.
+ *
+ * The suggestion is a number you are about to type, so it has to be a step you
+ * can physically make. Per side, the smallest plate is 1.25 — which is the
+ * classic 2.5 kg on the bar. Dumbbells do not come in 1.25s; racks climb in 1s
+ * and 2s. And a stack is a stack, so the old 2.5 still stands there.
+ */
+export const stepFor = (loadType) =>
+  loadType === 'barbell' ? 1.25
+  : loadType === 'dumbbell_pair' ? 1
+  : STEP_KG;
+
+/**
  * @param last        the cached entry from exerciseHistory: `{ weightKg, reps,
  *                    setsPlanned, setsCompleted, dayKey }`, or null
  * @param targetReps  this session's planned reps for the exercise
@@ -27,7 +40,7 @@ export const STEP_KG = 2.5;
  *   weightKg  the weight to offer (only meaningful when `suggest`)
  *   reason    short, human, and always the ACTUAL reason — shown to you
  */
-export function overloadSuggestion(last, targetReps, currentKg = null) {
+export function overloadSuggestion(last, targetReps, currentKg = null, loadType = null) {
   if (!last || !(last.weightKg > 0)) {
     return { suggest: false, weightKg: null, reason: null };
   }
@@ -61,7 +74,7 @@ export function overloadSuggestion(last, targetReps, currentKg = null) {
     };
   }
 
-  const next = Math.round((last.weightKg + STEP_KG) * 100) / 100;
+  const next = Math.round((last.weightKg + stepFor(loadType)) * 100) / 100;
 
   // Never suggest going backwards. The weight loaded now can already be above
   // last session's — a template that was edited, or a weight raised earlier in

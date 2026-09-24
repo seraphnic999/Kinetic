@@ -419,7 +419,7 @@ export default function DashboardPage() {
           workout_exercises(id,parent_id,exercise_type,exercise_name,body_section,status,
             weight_kg,sets_planned,sets_completed,reps,
             duration_secs,intervals_planned,intervals_done,perf_order,
-            cardio_type,speed_kmh,incline_pct)`)
+            cardio_type,speed_kmh,incline_pct,load_type,bar_kg)`)
         .order('started_at', { ascending: false })
         .limit(SESSION_LIMIT),
       supabase

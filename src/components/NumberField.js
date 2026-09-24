@@ -23,6 +23,7 @@ import { Icon } from './Icon';
 import { lbLabel } from '../utils/units';
 import { platesFor, perSideLabel } from '../utils/plates';
 import { getPrefs, setPref, peekPrefs, WEIGHT_STEPS } from '../utils/prefs';
+import { LOAD_TYPES, effectiveKg, DEFAULT_BAR_KG } from '../utils/analytics';
 
 /** Trailing zeros are noise on a weight: 80, not 80.0 — but 82.5 stays 82.5. */
 const fmt = (n) => {
@@ -141,6 +142,28 @@ function Field({
  * would be confidently wrong. You ask for it on the lift where it means
  * something, and it is never wrong about the lift where it does not.
  */
+/**
+ * What the number in the field adds up to.
+ *
+ * The field asks for the number you can actually read off the equipment — one
+ * bell, or the plates on one end of the bar — because that is the only number
+ * you know mid-set. This line closes the gap between that and what the session
+ * is credited with, so the conversion is never something you have to trust
+ * silently.
+ */
+function LoadTotal({ value, loadType, barKg }) {
+  if (loadType !== LOAD_TYPES.DUMBBELL_PAIR && loadType !== LOAD_TYPES.BARBELL) return null;
+  const total = effectiveKg(value, loadType, barKg);
+  const bar = barKg == null ? DEFAULT_BAR_KG : barKg;
+  return (
+    <Text style={s.loadTotal}>
+      {loadType === LOAD_TYPES.DUMBBELL_PAIR
+        ? `${fmt(value)} × 2  =  ${fmt(total)} kg moved`
+        : `${fmt(value)} × 2 + ${fmt(bar)} kg bar  =  ${fmt(total)} kg moved`}
+    </Text>
+  );
+}
+
 function PlateBreakdown({ value }) {
   const [open, setOpen] = useState(false);
   const r = platesFor(value);
@@ -217,8 +240,16 @@ function StepChoice({ value, onChange }) {
   );
 }
 
+/** What the field is ASKING for, which is not the same for every load type. */
+const weightLabel = (loadType) =>
+  loadType === LOAD_TYPES.DUMBBELL_PAIR ? 'WEIGHT PER HAND'
+  : loadType === LOAD_TYPES.BARBELL ? 'PLATES PER SIDE'
+  : 'WEIGHT';
+
 /** Plate-math weight, stepping by whatever increment this gym needs. */
-export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plates = true }) {
+export function WeightField({
+  value, onChange, disabled, label, plates = true, loadType = null, barKg = null,
+}) {
   // Seeded synchronously from the cached prefs so the first render already has
   // the right step — a set sheet that opens on 2.5 and then flicks to 1 reads
   // as a bug even though it settles correctly.
@@ -237,7 +268,7 @@ export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plate
 
   return (
     <Field
-      label={label}
+      label={label ?? weightLabel(loadType)}
       value={value}
       onChange={onChange}
       min={0}
@@ -248,7 +279,17 @@ export function WeightField({ value, onChange, disabled, label = 'WEIGHT', plate
       hint
       disabled={disabled}
       stepRow={<StepChoice value={step} onChange={chooseStep} />}
-      footer={plates ? <PlateBreakdown value={value} /> : null}
+      footer={
+        <>
+          <LoadTotal value={value} loadType={loadType} barKg={barKg} />
+          {/* Plate maths is for a bar and nothing else. Offering it on a pair
+              of dumbbells or a cable stack was always nonsense; now that the
+              load type is known, it can simply not be there. */}
+          {plates && loadType === LOAD_TYPES.BARBELL
+            ? <PlateBreakdown value={effectiveKg(value, loadType, barKg)} />
+            : null}
+        </>
+      }
     />
   );
 }
@@ -324,6 +365,11 @@ const s = StyleSheet.create({
   chipTxt: { ...Typography.bodyMedium, color: Colors.text, fontVariant: ['tabular-nums'] },
 
   hint: { ...Typography.caption, color: Colors.textFaint, textAlign: 'center' },
+
+  // The conversion line. Ice rather than ember: it is a readout of what the
+  // field means, not a live value and not something to act on.
+  loadTotal: { ...Typography.caption, color: Colors.ice, textAlign: 'center',
+               marginTop: Spacing.xs, fontVariant: ['tabular-nums'] },
 
   plateWrap:   { alignItems: 'center' },
   plateToggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs,

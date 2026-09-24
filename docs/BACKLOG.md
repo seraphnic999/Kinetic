@@ -208,6 +208,35 @@ The first release shaped by training with the app rather than testing it.
   total-remaining readout were measured against a plan that no longer existed.
   The row subtitle and the logged session were reading that stale plan too.
 
+## v20 · a combo glyph that survives 30px
+*2026-09-24 · 1.7.3*
+
+Third attempt at the combo icon. Two circles rather than two stadiums, because
+the roundest shape gives the biggest hole for a given footprint and a big open
+hole is the only thing that reads at 30px. Set counters stopped computing
+"done" as template-minus-remaining, which said "2 of 3" while you stood there
+having done three of four.
+
+## v21 · load type, and per-set weights
+*2026-09-24 · 1.8.0*
+
+The first release to change what a stored number **means** (`DESIGN.md` §12.6,
+§12.7).
+
+- **Load type.** The weight field was read as the total moved, but nobody types
+  a total — you type the bell in your hand or the plate on one end of the bar.
+  Every dumbbell lift was therefore logged at half. Each exercise now says
+  which kind of number it carries; the field asks for that quantity by name,
+  states the conversion under it, and offers plate maths only for a barbell.
+- **Equipment splits the history.** *Bench Press (Dumbbell)* and *Bench Press
+  (Barbell)* are two progressions and two PR lists, so switching equipment
+  stops reading as a 40 % jump followed by a collapse.
+- **Per-set weights and reps.** They have been in the timeline since the
+  timeline existed and were never read back, so changing a weight mid-exercise
+  re-priced the sets already done. Volume, reps and best-set now come from the
+  individual sets where the timeline accounts for all of them.
+- Nothing already in the database was restated: `NULL` reads as `single`.
+
 ---
 
 # Part 1.5 — Decided, 2026-09-21

@@ -187,6 +187,115 @@ export function deriveTimeline(timeline, totalDurationSecs) {
   };
 }
 
+// ─── Load type ────────────────────────────────────────────────────────────────
+//
+// Nobody types a total. You type what is in front of you: 25 off the bell in
+// your hand, or 25 off the plate you just slid onto one end of the bar. The
+// app was storing that number as if it were the whole load, so every dumbbell
+// lift in the history is recorded at half, and a barbell lift is missing both
+// the far side and the bar.
+//
+// The fix is not to demand a different number. It is to record which KIND of
+// number it is, and convert:
+//
+//   dumbbell_pair  one bell, two moved            ->  entered x 2
+//   barbell        plates on ONE side, plus bar   ->  entered x 2 + bar
+//   single         one implement or a stack       ->  entered
+//
+// `null` means single, so every row written before this existed keeps exactly
+// the value it always had. Nothing is silently restated.
+
+export const LOAD_TYPES = { BARBELL: 'barbell', DUMBBELL_PAIR: 'dumbbell_pair', SINGLE: 'single' };
+
+/** An Olympic bar. Overridable per exercise — an EZ bar is nearer 10. */
+export const DEFAULT_BAR_KG = 20;
+
+/**
+ * The load actually moved, from the number that was entered.
+ *
+ * This is the one place the conversion lives. Every total, every record and
+ * every chart goes through it, so the phone and the web dashboard cannot
+ * disagree about what 25 kg meant.
+ */
+export const effectiveKg = (enteredKg, loadType, barKg) => {
+  const w = parseFloat(enteredKg) || 0;
+  if (loadType === LOAD_TYPES.DUMBBELL_PAIR) return w * 2;
+  if (loadType === LOAD_TYPES.BARBELL) {
+    const bar = barKg == null ? DEFAULT_BAR_KG : (parseFloat(barKg) || 0);
+    return w * 2 + bar;
+  }
+  return w;
+};
+
+/** The load moved by one row, from its stored columns. */
+export const rowKg = (e) => effectiveKg(e?.weight_kg, e?.load_type, e?.bar_kg);
+
+/** The qualifier shown after an exercise name. `single` gets none — it is the
+ *  default reading, and every historic row would otherwise be relabelled. */
+export const loadLabel = (loadType) =>
+  loadType === LOAD_TYPES.BARBELL ? 'Barbell'
+  : loadType === LOAD_TYPES.DUMBBELL_PAIR ? 'Dumbbell'
+  : null;
+
+/**
+ * Identity for progression and records.
+ *
+ * A barbell bench press and a dumbbell bench press are not the same lift, and
+ * putting them on one line makes the day you switch equipment look like a 40%
+ * jump — followed by a collapse the day you switch back. Keying on the load
+ * type splits them into two honest progressions.
+ */
+export const exerciseKey = (e) => {
+  const l = loadLabel(e?.load_type);
+  return l ? `${e.exercise_name} (${l})` : e?.exercise_name;
+};
+
+/**
+ * Per-set weights and reps, recovered from the session timeline.
+ *
+ * Every SET DONE has written `{ exerciseName, setNumber, weight, reps }` since
+ * the timeline existed, and a combo writes a `subExercises` array carrying the
+ * same per station. None of it was ever read back: every chart used the
+ * exercise ROW, which holds ONE weight and ONE rep count for the whole
+ * exercise. Change the weight after set two and that row remembers only where
+ * you ended up — so the sets you already did get re-priced at the new number,
+ * and a session of 60/60/70 is recorded as three sets of 70.
+ *
+ * Returns Map<exerciseName, Array<{ weightKg, reps }>>, in the order performed.
+ */
+const setsFromTimeline = (timeline) => {
+  const out = new Map();
+  const push = (name, weight, reps) => {
+    if (!name || weight == null || reps == null) return;
+    if (!out.has(name)) out.set(name, []);
+    out.get(name).push({ weightKg: parseFloat(weight) || 0, reps: parseInt(reps, 10) || 0 });
+  };
+  for (const ev of Array.isArray(timeline) ? timeline : []) {
+    if (ev?.action !== 'set_done') continue;
+    if (Array.isArray(ev.subExercises)) {
+      for (const sub of ev.subExercises) push(sub?.name, sub?.weight, sub?.reps);
+    } else {
+      push(ev.exerciseName, ev.weight, ev.reps);
+    }
+  }
+  return out;
+};
+
+/**
+ * Kilograms moved by one lifting row.
+ *
+ * Per set where the sets are known, and the old flat multiply where they are
+ * not — which is every session logged before the timeline carried them, and
+ * any row whose events could not be matched with confidence.
+ */
+export const rowVolume = (e) => {
+  if (e.sets) {
+    return e.sets.reduce(
+      (sum, x) => sum + effectiveKg(x.weightKg, e.load_type, e.bar_kg) * (x.reps || 0), 0);
+  }
+  return rowKg(e) * (e.sets_completed || 0) * (e.reps || 0);
+};
+
 // ─── Session shaping ──────────────────────────────────────────────────────────
 
 /** True for a combo aggregate row — its children carry the real numbers. */
@@ -205,8 +314,20 @@ const isLifting = (e) => e.exercise_type === 'regular';
  */
 export const shapeSessions = (rows) =>
   (rows ?? []).map(s => {
+    const perSet = setsFromTimeline(s.timeline);
+    // Trust the timeline only where it accounts for EXACTLY the sets the row
+    // says were completed. Fewer means events were lost; more means two
+    // exercises in one session shared a name and their sets have been pooled.
+    // Either way a wrong split is worse than an honest average, so fall back.
+    const attachSets = (e) => {
+      if (!isLifting(e)) return e;
+      const rec = perSet.get(e.exercise_name);
+      if (!rec || rec.length === 0 || rec.length !== (e.sets_completed ?? 0)) return e;
+      return { ...e, sets: rec };
+    };
     const all = (s.workout_exercises ?? []).slice()
-      .sort((a, b) => (a.perf_order ?? 0) - (b.perf_order ?? 0));
+      .sort((a, b) => (a.perf_order ?? 0) - (b.perf_order ?? 0))
+      .map(attachSets);
     const children = all.filter(e => e.parent_id);
     const top = all.filter(e => !e.parent_id);
     const byParent = new Map();
@@ -225,14 +346,16 @@ export const shapeSessions = (rows) =>
 /** Total kg moved: weight x completed sets x reps, over every lifting row. */
 export const sessionVolume = (session) =>
   (session.liftingRows ?? (session.exercises ?? []).filter(isLifting))
-    .reduce((sum, e) => sum + (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0), 0);
+    .reduce((sum, e) => sum + rowVolume(e), 0);
 
 /** Completed sets and reps across every lifting row. */
 export const sessionSets = (session) =>
   (session.liftingRows ?? []).reduce(
     (a, e) => ({
-      sets: a.sets + (e.sets_completed || 0),
-      reps: a.reps + (e.sets_completed || 0) * (e.reps || 0),
+      sets: a.sets + (e.sets ? e.sets.length : (e.sets_completed || 0)),
+      reps: a.reps + (e.sets
+        ? e.sets.reduce((n, x) => n + (x.reps || 0), 0)
+        : (e.sets_completed || 0) * (e.reps || 0)),
     }),
     { sets: 0, reps: 0 },
   );
@@ -257,7 +380,7 @@ export const sessionSectionVolume = (session) => {
   const out = {};
   for (const e of session.liftingRows ?? []) {
     const k = e.body_section || 'Other';
-    out[k] = (out[k] ?? 0) + (e.weight_kg || 0) * (e.sets_completed || 0) * (e.reps || 0);
+    out[k] = (out[k] ?? 0) + rowVolume(e);
   }
   return out;
 };
@@ -266,22 +389,47 @@ export const sessionSectionVolume = (session) => {
 export const sessionBestSets = (session) => {
   const best = new Map();
   for (const e of session.liftingRows ?? []) {
-    const est = e1rm(e.weight_kg, e.reps);
-    if (est == null) continue;
-    const prev = best.get(e.exercise_name);
-    if (!prev || est > prev.e1rm) {
-      best.set(e.exercise_name, {
-        exercise: e.exercise_name,
-        bodySection: e.body_section ?? null,
-        weightKg: parseFloat(e.weight_kg),
-        reps: e.reps,
-        e1rm: est,
-        // Carried so a caller can ask "did every planned set actually get
-        // done?" — which is the whole basis of the overload suggestion.
-        // Additive: nothing that already reads a best set is affected.
-        setsPlanned:   e.sets_planned ?? null,
-        setsCompleted: e.sets_completed ?? null,
-      });
+    const key = exerciseKey(e);
+    // Every set is a candidate, not just the row's single weight-and-reps. A
+    // row is an average of something that is not always uniform: work up
+    // 60/65/70 and the row remembers 70 for all three, or 60 for all three,
+    // depending only on when you last touched the field. Where the timeline
+    // knows the sets, the best one is FOUND here rather than assumed.
+    //
+    // weightKg is the load actually moved, so a pair of 25s reads as 50 — the
+    // only figure that can be compared with a barbell set, which is the whole
+    // point of recording the load type.
+    const candidates = e.sets
+      ? e.sets.map(x => ({ weightKg: effectiveKg(x.weightKg, e.load_type, e.bar_kg),
+                           reps: x.reps, enteredKg: x.weightKg }))
+      : [{ weightKg: rowKg(e), reps: e.reps, enteredKg: parseFloat(e.weight_kg) || 0 }];
+    for (const c of candidates) {
+      const est = e1rm(c.weightKg, c.reps);
+      if (est == null) continue;
+      const prev = best.get(key);
+      if (!prev || est > prev.e1rm) {
+        best.set(key, {
+          exercise: key,
+          // The bare name and the load type are carried alongside the key so a
+          // caller can show "Bench Press · Dumbbell" without re-parsing it out
+          // of a string it did not build.
+          exerciseName: e.exercise_name,
+          loadType: e.load_type ?? null,
+          barKg: e.bar_kg ?? null,
+          bodySection: e.body_section ?? null,
+          // What moved, and what you typed. Charts compare the first; the
+          // weight field has to offer back the second.
+          weightKg: c.weightKg,
+          enteredKg: c.enteredKg,
+          reps: c.reps,
+          e1rm: est,
+          // Carried so a caller can ask "did every planned set actually get
+          // done?" — which is the whole basis of the overload suggestion.
+          // Additive: nothing that already reads a best set is affected.
+          setsPlanned:   e.sets_planned ?? null,
+          setsCompleted: e.sets_completed ?? null,
+        });
+      }
     }
   }
   return [...best.values()];
@@ -348,6 +496,7 @@ export function sessionFromSummary(summary) {
     if (ex.type === 'regular') {
       rows.push({ ...base,
         weight_kg: ex.weight ?? null, reps: ex.reps ?? null,
+        load_type: ex.loadType ?? null, bar_kg: ex.barKg ?? null,
         sets_planned: ex.plannedSets ?? null, sets_completed: ex.completedSets ?? null });
       return;
     }
@@ -362,6 +511,7 @@ export function sessionFromSummary(summary) {
         exercise_type: 'regular', exercise_name: sub.name,
         body_section: sub.bodySection ?? null, status: ex.status,
         weight_kg: sub.weight ?? null, reps: sub.reps ?? null,
+        load_type: sub.loadType ?? null, bar_kg: sub.barKg ?? null,
         sets_planned: ex.plannedSets ?? null, sets_completed: ex.completedSets ?? null,
         perf_order: order * 100 + i + 1,
       }));

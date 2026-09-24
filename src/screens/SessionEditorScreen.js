@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, IconSize, Touch, Elevation, onAccent } from '../theme';
 import { Icon } from '../components/Icon';
 import { Stepper } from '../components/Stepper';
+import { LoadTypeChoice } from '../components/LoadTypeChoice';
 import { PickerModal } from '../components/PickerModal';
 import { EmptyState } from '../components/States';
 import { upsertSession, generateId } from '../utils/storage';
@@ -92,9 +93,19 @@ function RegularExerciseForm({ exercise, onChange }) {
         </>
       ) : null}
 
+      {/* What the weight means. Above the number, because it changes what the
+          number is being asked for. */}
+      <View style={formStyles.field}>
+        <LoadTypeChoice
+          value={exercise.loadType}
+          barKg={exercise.barKg}
+          onChange={(loadType, barKg) => onChange({ ...exercise, loadType, barKg })}
+        />
+      </View>
+
       {/* Numeric parameters */}
       <View style={formStyles.stepperRow}>
-        <Stepper label="Weight (kg)" value={exercise.weight ?? 0} onChange={v => onChange({ ...exercise, weight: v })} min={0} max={500} />
+        <Stepper label={weightStepperLabel(exercise.loadType)} value={exercise.weight ?? 0} onChange={v => onChange({ ...exercise, weight: v })} min={0} max={500} />
         <Stepper label="Sets" value={exercise.sets ?? 1} onChange={v => onChange({ ...exercise, sets: v })} min={1} max={99} />
         <Stepper label="Reps" value={exercise.reps ?? 1} onChange={v => onChange({ ...exercise, reps: v })} min={1} max={999} />
       </View>
@@ -235,11 +246,21 @@ const formStyles = StyleSheet.create({
   },
 });
 
+/** The stepper asks for a different quantity depending on the load type. */
+const weightStepperLabel = (loadType) =>
+  loadType === 'dumbbell_pair' ? 'Per hand (kg)'
+  : loadType === 'barbell' ? 'Per side (kg)'
+  : 'Weight (kg)';
+
 // ---------- Helper: new exercise templates ----------
 const newRegular = () => ({
   id: generateId(), type: EXERCISE_TYPES.REGULAR,
   bodySection: '', name: '', customName: '',
   weight: 0, sets: 3, reps: 10,
+  // null, not 'single': an exercise that has never been told what its weight
+  // means should read the same as every exercise made before this field
+  // existed, and both mean "what you typed is what moved".
+  loadType: null, barKg: null,
 });
 const newCombo = () => ({
   id: generateId(), type: EXERCISE_TYPES.COMBO, name: 'Combo',

@@ -44,6 +44,10 @@ export function buildPayload(summary, clientId) {
 
     if (ex.type === 'regular') return {
       ...base,
+      // How to read weight_kg. Without this a pair of 25s is stored as 25 and
+      // counts as half of what was moved — see LOAD_TYPES in shared/analytics.
+      load_type:      ex.loadType ?? null,
+      bar_kg:         ex.loadType === 'barbell' ? (ex.barKg ?? 20) : null,
       weight_kg:      ex.weight ?? null,
       sets_planned:   ex.plannedSets ?? null,
       sets_completed: ex.completedSets ?? null,
@@ -102,6 +106,8 @@ export function buildPayload(summary, clientId) {
         // Children share the parent's slot, offset so their own order is
         // stable without colliding with the next top-level exercise.
         perf_order:     parentOrder * 100 + subIdx + 1,
+        load_type:      sub.loadType ?? null,
+        bar_kg:         sub.loadType === 'barbell' ? (sub.barKg ?? 20) : null,
         weight_kg:      sub.weight ?? null,
         // Sets are inherited: you cannot do four sets of a combo and three of
         // the exercise inside it.

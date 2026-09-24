@@ -32,6 +32,7 @@ import { lbLabel } from '../utils/units';
 import {
   sessionFromSummary, deriveSession, deriveAll, shapeSessions,
   computeSessionPRs, fmtTonnes, fmtDur, dayLabel, SESSION_LIMIT,
+  effectiveKg, LOAD_TYPES, DEFAULT_BAR_KG,
 } from '../utils/analytics';
 
 const STATUS_ICON = {
@@ -55,7 +56,8 @@ function ExerciseRow({ ex, index }) {
       {ex.type === EXERCISE_TYPES.REGULAR && (
         <View style={r.pills}>
           <Pill label="Sets"   value={`${ex.completedSets}/${ex.plannedSets}`} />
-          <Pill label="Weight" value={`${ex.weight} kg`} shadow={ex.weight} />
+          <Pill label="Weight" value={`${fmtKg(loadOf(ex))} kg`} shadow={loadOf(ex)}
+                note={loadNote(ex)} />
           <Pill label="Reps"   value={String(ex.reps)} />
         </View>
       )}
@@ -68,7 +70,7 @@ function ExerciseRow({ ex, index }) {
           {ex.subExercises?.map((sub, i) => (
             <View key={i} style={r.subRow}>
               <Text style={r.subName} numberOfLines={1}>{sub.name}</Text>
-              <Text style={r.subStats}>{sub.weight} kg × {sub.reps}</Text>
+              <Text style={r.subStats}>{fmtKg(loadOf(sub))} kg × {sub.reps}</Text>
             </View>
           ))}
         </>
@@ -107,11 +109,32 @@ function ExerciseRow({ ex, index }) {
   );
 }
 
-function Pill({ label, value, shadow }) {
+/** What actually moved, from what was entered. */
+const loadOf = (x) => effectiveKg(x?.weight, x?.loadType, x?.barKg);
+
+const fmtKg = (n) => {
+  const v = Math.round((Number(n) || 0) * 10) / 10;
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+};
+
+/** The derivation, but only where the two numbers differ. */
+const loadNote = (x) => {
+  if (x?.loadType === LOAD_TYPES.DUMBBELL_PAIR) return `${fmtKg(x.weight)} × 2`;
+  if (x?.loadType === LOAD_TYPES.BARBELL) {
+    return `${fmtKg(x.weight)} × 2 + ${fmtKg(x.barKg ?? DEFAULT_BAR_KG)}`;
+  }
+  return null;
+};
+
+function Pill({ label, value, shadow, note }) {
   return (
     <View style={r.pill}>
       <Text style={r.pillLabel}>{label}</Text>
       <Text style={r.pillValue}>{value}</Text>
+      {/* How the figure above was arrived at, for the load types where the
+          number you typed is not the number that moved. Without it the
+          summary would silently disagree with what you entered. */}
+      {note ? <Text style={r.pillNote}>{note}</Text> : null}
       {/* A per-exercise weight is exactly the figure §3.5 wants a pound
           reading beside — you might run this session on a foreign rack. */}
       {shadow > 0 ? <Text style={r.pillShadow}>{lbLabel(shadow)}</Text> : null}
@@ -493,6 +516,7 @@ const r = StyleSheet.create({
   },
   pillLabel:  { ...Typography.caption, color: Colors.textFaint },
   pillValue:  { ...Typography.metric, color: Colors.text },
+  pillNote: { ...Typography.caption, color: Colors.ice, fontVariant: ['tabular-nums'] },
   pillShadow: { ...Typography.caption, color: Colors.textFaint },
 
   subRow:   { flexDirection: 'row', justifyContent: 'space-between',

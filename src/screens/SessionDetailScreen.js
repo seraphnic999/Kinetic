@@ -35,14 +35,15 @@ import { EmptyState, SkeletonList } from '../components/States';
 import { supabase } from '../config/supabase';
 import { lbLabel } from '../utils/units';
 import { refreshExerciseHistory } from '../utils/exerciseHistory';
-import { shapeSessions, deriveSession, dayLabel, fmtDur, fmtTonnes } from '../utils/analytics';
+import { shapeSessions, deriveSession, dayLabel, fmtDur, fmtTonnes,
+         loadLabel, LOAD_TYPES } from '../utils/analytics';
 
 const SELECT = `
   id, name, started_at, duration_secs, timeline,
   workout_exercises (
     id, parent_id, exercise_type, exercise_name, body_section, status,
     weight_kg, sets_planned, sets_completed, reps, duration_secs,
-    perf_order, cardio_type, speed_kmh, incline_pct
+    perf_order, cardio_type, speed_kmh, incline_pct, load_type, bar_kg
   )
 `;
 
@@ -202,7 +203,19 @@ export default function SessionDetailScreen({ navigation, route }) {
             <View key={row.id} style={[s.card, row.depth > 0 && s.childCard]}>
               <View style={s.cardHead}>
                 <Text style={s.exName} numberOfLines={1}>{row.exercise_name}</Text>
-                {row.body_section ? <Text style={s.exSub}>{row.body_section}</Text> : null}
+                <View style={s.exSubRow}>
+                  {row.body_section ? <Text style={s.exSub}>{row.body_section}</Text> : null}
+                  {/* Without this the weight field below is a trap: 25 on a
+                      dumbbell row means 25 per hand, and correcting it to
+                      "what I actually lifted" would double the real load. */}
+                  {loadLabel(row.load_type)
+                    ? <Text style={s.exLoad}>
+                        {row.load_type === LOAD_TYPES.DUMBBELL_PAIR
+                          ? 'per hand · ×2'
+                          : `per side · +${row.bar_kg ?? 20} kg bar`}
+                      </Text>
+                    : null}
+                </View>
               </View>
 
               {editable ? (
@@ -301,6 +314,8 @@ const s = StyleSheet.create({
   childCard: { marginInlineStart: Spacing.lg, backgroundColor: Colors.base },
   cardHead:  { gap: 2 },
   exName:    { ...Typography.h3, color: Colors.text },
+  exSubRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  exLoad: { ...Typography.caption, color: Colors.ice },
   exSub:     { ...Typography.bodySmall, color: Colors.textMuted },
 
   fieldRow: { flexDirection: 'row', gap: Spacing.sm },

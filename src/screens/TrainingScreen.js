@@ -12,6 +12,7 @@ import { Sheet } from '../components/Sheet';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { SetPips } from '../components/SetPips';
 import { WeightField, RepsField } from '../components/NumberField';
+import { LoadTypeChoice } from '../components/LoadTypeChoice';
 import { RestHero } from '../components/RestHero';
 import { EmptyState } from '../components/States';
 import { formatTime } from '../utils/time';
@@ -164,12 +165,18 @@ const initExerciseStates = (exercises) => {
   const s = {};
   (exercises ?? []).forEach(ex => {
     if (ex.type === EXERCISE_TYPES.REGULAR) {
-      s[ex.id] = { setsLeft: ex.sets, setsCompleted: 0, weight: ex.weight, reps: ex.reps, status: 'pending', setStartedAt: null };
+      s[ex.id] = { setsLeft: ex.sets, setsCompleted: 0, weight: ex.weight, reps: ex.reps,
+                   // Seeded from the template but editable here: the template is what
+                   // you USUALLY do, and today you may have walked to a different rack.
+                   loadType: ex.loadType ?? null, barKg: ex.barKg ?? null,
+                   status: 'pending', setStartedAt: null };
     } else if (ex.type === EXERCISE_TYPES.COMBO) {
       s[ex.id] = {
         setsLeft: ex.sets, setsCompleted: 0, status: 'pending', setStartedAt: null,
-        subWeights: (ex.subExercises ?? []).map(s => s.weight ?? 0),
-        subReps:    (ex.subExercises ?? []).map(s => s.reps ?? 1),
+        subWeights:   (ex.subExercises ?? []).map(s => s.weight ?? 0),
+        subReps:      (ex.subExercises ?? []).map(s => s.reps ?? 1),
+        subLoadTypes: (ex.subExercises ?? []).map(s => s.loadType ?? null),
+        subBarKgs:    (ex.subExercises ?? []).map(s => s.barKg ?? null),
       };
     } else if (ex.type === EXERCISE_TYPES.WARMUP) {
       s[ex.id] = { timeLeft: ex.duration ?? 180, isRunning: false, status: 'pending' };
@@ -208,10 +215,13 @@ const initExerciseStates = (exercises) => {
  * Renders nothing when there is no history: a first outing has nothing to beat,
  * and an empty "no previous data" row is noise on every new exercise.
  */
-function LastTime({ exerciseName, targetReps, currentKg, onTake }) {
-  const prev = lastFor(exerciseName);
+function LastTime({ exerciseName, targetReps, currentKg, onTake, loadType = null }) {
+  // Looked up per load type: what you pressed with dumbbells is not an answer
+  // to what to load on a bar, and offering it as one would be worse than
+  // showing nothing at all.
+  const prev = lastFor(exerciseName, loadType);
   if (!prev) return null;
-  const s = overloadSuggestion(prev, targetReps, currentKg);
+  const s = overloadSuggestion(prev, targetReps, currentKg, loadType);
 
   return (
     <View style={d.lastCard}>
@@ -266,9 +276,14 @@ function RegularDetail({ exercise, state, onUpdate }) {
       <LastTime exerciseName={getExerciseName(exercise)}
                 targetReps={state.reps}
                 currentKg={state.weight}
+                loadType={state.loadType}
                 onTake={v => onUpdate({ weight: v })} />
 
-      <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })} />
+      <LoadTypeChoice value={state.loadType} barKg={state.barKg}
+                      onChange={(loadType, barKg) => onUpdate({ loadType, barKg })} />
+
+      <WeightField value={state.weight} onChange={v => onUpdate({ weight: v })}
+                   loadType={state.loadType} barKg={state.barKg} />
       <RepsField   value={state.reps}   onChange={v => onUpdate({ reps: v })} />
 
       {/* Plans change mid-session — one more set, or one fewer because the
@@ -307,6 +322,11 @@ function ComboDetail({ exercise, state, onUpdate }) {
   const setR = (idx, v) => {
     const sr = [...(state.subReps ?? [])]; sr[idx] = v; onUpdate({ subReps: sr });
   };
+  const setLoad = (idx, loadType, barKg) => {
+    const lt = [...(state.subLoadTypes ?? [])]; lt[idx] = loadType;
+    const bk = [...(state.subBarKgs ?? [])];    bk[idx] = barKg;
+    onUpdate({ subLoadTypes: lt, subBarKgs: bk });
+  };
 
   return (
     <View style={d.body}>
@@ -324,8 +344,10 @@ function ComboDetail({ exercise, state, onUpdate }) {
           const nm = sub.name === 'Other'
             ? (sub.customName || `Exercise ${idx + 1}`)
             : (sub.name || `Exercise ${idx + 1}`);
-          const w = state.subWeights?.[idx] ?? 0;
-          const r = state.subReps?.[idx] ?? 1;
+          const w  = state.subWeights?.[idx] ?? 0;
+          const r  = state.subReps?.[idx] ?? 1;
+          const lt = state.subLoadTypes?.[idx] ?? null;
+          const bk = state.subBarKgs?.[idx] ?? null;
           const isOpen = open === idx;
 
           return (
@@ -358,8 +380,11 @@ function ComboDetail({ exercise, state, onUpdate }) {
               {isOpen && (
                 <View style={d.stationBody}>
                   <LastTime exerciseName={nm} targetReps={r} currentKg={w}
-                            onTake={v => setW(idx, v)} />
-                  <WeightField value={w} onChange={v => setW(idx, v)} />
+                            loadType={lt} onTake={v => setW(idx, v)} />
+                  <LoadTypeChoice value={lt} barKg={bk}
+                                  onChange={(v, b) => setLoad(idx, v, b)} />
+                  <WeightField value={w} onChange={v => setW(idx, v)}
+                               loadType={lt} barKg={bk} />
                   <RepsField   value={r} onChange={v => setR(idx, v)} />
                 </View>
               )}
@@ -680,12 +705,14 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
   const emptyEx = () => ({ bodySection: '', name: '', customBodySection: '', customName: '' });
   const [regEx, setRegEx]             = useState(emptyEx);
   const updateRegEx = patch => setRegEx(prev => ({ ...prev, ...patch }));
-  const emptyComboSub = () => ({ ...emptyEx(), weight: 0, reps: 10 });
+  const emptyComboSub = () => ({ ...emptyEx(), weight: 0, reps: 10, loadType: null, barKg: null });
   const [comboSubs, setComboSubs]     = useState(() => [emptyComboSub(), emptyComboSub()]);
   const updateComboSub = (idx, patch) => setComboSubs(prev => prev.map((s, i) => i === idx ? { ...s, ...patch } : s));
   const addComboSub    = () => setComboSubs(prev => [...prev, emptyComboSub()]);
   const removeComboSub = (idx) => setComboSubs(prev => prev.filter((_, i) => i !== idx));
   const [weight, setWeight]           = useState(0);
+  const [loadType, setLoadType]       = useState(null);
+  const [barKg, setBarKg]             = useState(null);
   const [sets, setSets]               = useState(3);
   const [reps, setReps]               = useState(10);
   const [cardioSubtype, setCardioSubtype] = useState(CARDIO_TYPES.INTERVALS);
@@ -725,7 +752,7 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
     if (type === EXERCISE_TYPES.WARMUP)
       return onAdd({ id, type, warmupType, duration: warmupDur });
     if (type === EXERCISE_TYPES.REGULAR)
-      return onAdd({ id, type, ...regEx, weight, sets, reps });
+      return onAdd({ id, type, ...regEx, weight, sets, reps, loadType, barKg });
     if (type === EXERCISE_TYPES.COMBO)
       return onAdd({ id, type, name: 'Combo', sets,
         subExercises: comboSubs.map(sub => ({ id: generateId(), ...sub })) });
@@ -789,8 +816,12 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
           {step === 'form' && type === EXERCISE_TYPES.REGULAR && (
             <>
               <ExercisePicker value={regEx} onChange={updateRegEx} />
+              <LoadTypeChoice value={loadType} barKg={barKg}
+                              onChange={(v, b) => { setLoadType(v); setBarKg(b); }} />
               <View style={qam.stepperRow}>
-                <Stepper value={weight} onChange={setWeight} min={0} max={500} label="Weight (kg)" />
+                <Stepper value={weight} onChange={setWeight} min={0} max={500}
+                         label={loadType === 'dumbbell_pair' ? 'Per hand (kg)'
+                                : loadType === 'barbell' ? 'Per side (kg)' : 'Weight (kg)'} />
                 <Stepper value={sets}   onChange={setSets}   min={1} max={99}  label="Sets" />
                 <Stepper value={reps}   onChange={setReps}   min={1} max={999} label="Reps" />
               </View>
@@ -813,8 +844,12 @@ function QuickAddModal({ exercises, onAdd, onClose }) {
                     )}
                   </View>
                   <ExercisePicker value={sub} onChange={patch => updateComboSub(idx, patch)} />
+                  <LoadTypeChoice value={sub.loadType} barKg={sub.barKg}
+                                  onChange={(v, b) => updateComboSub(idx, { loadType: v, barKg: b })} />
                   <View style={qam.stepperRow}>
-                    <Stepper value={sub.weight} onChange={v => updateComboSub(idx, { weight: v })} min={0} max={500} label="Weight (kg)" />
+                    <Stepper value={sub.weight} onChange={v => updateComboSub(idx, { weight: v })} min={0} max={500}
+                             label={sub.loadType === 'dumbbell_pair' ? 'Per hand (kg)'
+                                    : sub.loadType === 'barbell' ? 'Per side (kg)' : 'Weight (kg)'} />
                     <Stepper value={sub.reps}   onChange={v => updateComboSub(idx, { reps: v })}   min={1} max={999} label="Reps" />
                   </View>
                 </View>
@@ -1344,13 +1379,16 @@ export default function TrainingScreen({ navigation, route }) {
         const st = exStatesRef.current[id];
         const base = { id, type: ex?.type, name: getExerciseName(ex), status: st?.status ?? 'pending', performanceOrder: idx };
         if (ex?.type === EXERCISE_TYPES.REGULAR)
-          return { ...base, bodySection: ex?.bodySection, weight: st.weight, reps: st.reps, plannedSets: ex.sets, completedSets: st.setsCompleted };
+          return { ...base, bodySection: ex?.bodySection, weight: st.weight, reps: st.reps,
+                   loadType: st.loadType ?? null, barKg: st.barKg ?? null,
+                   plannedSets: ex.sets, completedSets: st.setsCompleted };
         if (ex?.type === EXERCISE_TYPES.COMBO)
           return { ...base, plannedSets: ex.sets, completedSets: st.setsCompleted,
             subExercises: (ex.subExercises ?? []).map((s, i) => ({
               name: s.name === 'Other' ? s.customName : s.name,
               bodySection: s.bodySection,
               weight: st.subWeights?.[i], reps: st.subReps?.[i],
+              loadType: st.subLoadTypes?.[i] ?? null, barKg: st.subBarKgs?.[i] ?? null,
             })) };
         if (ex?.type === EXERCISE_TYPES.WARMUP)
           return { ...base, warmupType: ex.warmupType, plannedDurationSecs: ex.duration ?? 180 };

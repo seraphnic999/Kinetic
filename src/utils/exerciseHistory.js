@@ -17,7 +17,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
-import { shapeSessions, deriveAll, SESSION_LIMIT } from './analytics';
+import { shapeSessions, deriveAll, SESSION_LIMIT, exerciseKey } from './analytics';
 
 const KEY = '@kinetic_exercise_history';
 
@@ -49,9 +49,13 @@ export const peekExerciseHistory = () => memo;
  * of the last session that contained this exercise, not the last set. The
  * heaviest is what you are actually deciding against.
  */
-export function lastFor(exerciseName) {
+export function lastFor(exerciseName, loadType = null) {
   if (!memo || !exerciseName) return null;
-  return memo.byExercise[exerciseName] ?? null;
+  // Keyed the way the engine keys it: a dumbbell bench press and a barbell
+  // bench press are different lifts, and offering last week's dumbbell number
+  // as this week's per-side figure would be worse than showing nothing.
+  const key = exerciseKey({ exercise_name: exerciseName, load_type: loadType });
+  return memo.byExercise[key] ?? null;
 }
 
 /**
@@ -68,7 +72,8 @@ export async function refreshExerciseHistory() {
         id, name, started_at, duration_secs, timeline,
         workout_exercises (
           id, parent_id, exercise_type, exercise_name, body_section, status,
-          weight_kg, sets_planned, sets_completed, reps, duration_secs, perf_order
+          weight_kg, sets_planned, sets_completed, reps, duration_secs, perf_order,
+          load_type, bar_kg
         )
       `).order('started_at', { ascending: false }).limit(SESSION_LIMIT);
 
@@ -81,7 +86,14 @@ export async function refreshExerciseHistory() {
       for (const b of d.bestSets ?? []) {
         if (!b.exercise || byExercise[b.exercise]) continue;
         byExercise[b.exercise] = {
-          weightKg: b.weightKg,
+          // What you typed, not what moved. This number goes back into the
+          // weight field and into the overload suggestion, and both want the
+          // figure you will set on the equipment — 25, not the 50 it adds up
+          // to. `movedKg` is kept for anything that wants the real load.
+          weightKg: b.enteredKg ?? b.weightKg,
+          movedKg:  b.weightKg,
+          loadType: b.loadType ?? null,
+          barKg:    b.barKg ?? null,
           reps:     b.reps,
           e1rm:     b.e1rm,
           dayKey:   d.dayKey,

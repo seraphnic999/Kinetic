@@ -1203,6 +1203,86 @@ added work rather than confirming it:
 
 ---
 
+## 12.6 Load type — what the number in the weight field means
+
+Closed 2026-09-24, after the first week of training with the app.
+
+The weight field has always been read as **the total load moved** — the plate
+breakdown proves it, since it subtracts a 20 kg bar from what you type and
+halves the rest. But nobody types a total. You type what you can read off the
+thing in front of you: 25 off the bell in your hand, or 25 off the plate you
+just slid onto one end of the bar. So every dumbbell lift in the history is
+recorded at **half**, and a barbell lift is missing the far side and the bar.
+
+The fix is not to demand a different number — the number you can see mid-set is
+the only one you will reliably enter. It is to record which KIND of number it
+is, once, and convert everywhere else:
+
+| `load_type`     | what `weight_kg` is  | load moved        |
+|-----------------|----------------------|-------------------|
+| `dumbbell_pair` | one bell             | `w × 2`           |
+| `barbell`       | plates on ONE side   | `w × 2 + bar_kg`  |
+| `single`        | what moved           | `w`               |
+
+`NULL` reads as `single`, so every row written before this existed keeps exactly
+the value it always had. **The migration restates nothing** — correcting the
+historic rows is a separate and deliberate step.
+
+Three values and no more. `single` covers a machine, a cable stack, a kettlebell
+and a pullover held in both hands, because they share the only property that
+matters here: what you type is what moved.
+
+`bar_kg` exists because bars are not all 20 — an EZ bar is nearer 10 — and is
+constrained to be present for `barbell` and absent otherwise, so the two can
+never disagree.
+
+**The conversion lives in exactly one place**, `effectiveKg` in
+`shared/analytics.js`, and every total, record and chart goes through it. The
+phone and the web dashboard therefore cannot disagree about what 25 kg meant.
+
+### It also splits the history
+
+The arithmetic is the smaller half. A barbell bench press and a dumbbell bench
+press are not the same lift: put them on one progression and the day you switch
+equipment reads as a 40 % jump, followed by a collapse the day you switch back.
+So `exerciseKey` qualifies the name with the load type — *Bench Press
+(Dumbbell)* and *Bench Press (Barbell)* are two lines and two PR lists. `single`
+takes no qualifier, which is what keeps every historic row where it was.
+
+### The entry surfaces tell you what they are asking for
+
+The field's label changes with the load type (WEIGHT / WEIGHT PER HAND / PLATES
+PER SIDE), a line under it states the conversion — `12 × 2 + 20 kg bar = 44 kg
+moved` — and plate maths appears **only** for a barbell, where it is the only
+place it ever meant anything. The overload suggestion steps in the units the
+field asks for: 1.25 per side, 1 per hand, 2.5 on a stack.
+
+---
+
+## 12.7 Per-set weights and reps
+
+Closed 2026-09-24.
+
+Every `SET DONE` has written `{ exerciseName, setNumber, weight, reps }` into
+the session timeline since the timeline existed, and a combo writes a
+`subExercises` array carrying the same per station. **None of it was ever read
+back.** Every chart used the exercise ROW, which holds one weight and one rep
+count for the whole exercise — so changing the weight after set two re-priced
+the sets already done, and a session of 60/60/70 was stored as three sets of 70.
+
+`shapeSessions` now recovers the per-set records from the timeline and attaches
+them to the row, and `rowVolume` sums them. The guard is deliberate: the
+timeline is trusted **only when it accounts for exactly the number of sets the
+row says were completed**. Fewer means events were lost; more means two
+exercises in one session shared a name and their sets have been pooled. Either
+way a wrong split is worse than an honest average, so the flat multiply stands.
+
+This corrects history as well as new sessions, because the events were always
+there. It also makes `sessionBestSets` find the heaviest set rather than assume
+the row's single weight was it.
+
+---
+
 ## 13. What to hand the icon generator
 
 `docs/ICON-BRIEF.md`, in full. It contains the style prompt, the format

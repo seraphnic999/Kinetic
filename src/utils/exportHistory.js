@@ -44,7 +44,8 @@ export async function buildHistoryCsv() {
       workout_exercises (
         exercise_type, exercise_name, body_section, status, perf_order,
         weight_kg, sets_planned, sets_completed, reps, duration_secs,
-        cardio_type, speed_kmh, incline_pct, intervals_planned, intervals_done
+        cardio_type, speed_kmh, incline_pct, intervals_planned, intervals_done,
+        load_type, bar_kg
       )
     `)
     .order('started_at', { ascending: false });
