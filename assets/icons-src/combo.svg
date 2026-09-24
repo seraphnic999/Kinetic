@@ -1,21 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
 
-  <!-- horizontal link -->
-  <path d="M18 25
-           H36
-           A7 7 0 0 1 36 39
-           H18
-           A7 7 0 0 1 18 25 Z"/>
-  <!-- vertical link, intentionally broken where it passes behind -->
-  <path d="M32 16
-           A7 7 0 0 1 39 23
-           V27"/>
-  <path d="M39 37
-           V41
-           A7 7 0 0 1 25 41
-           V37"/>
-  <path d="M25 27
-           V23
-           A7 7 0 0 1 32 16"/>
+  <!--
+    Two interlocked rings.
+
+    Third attempt, and the two failures are the reason for the shape:
+
+      1. The original pair of links were near-concentric — centres five units
+         apart on a 64 grid, same vertical centre — so their strokes crowded the
+         middle and it read as a clover.
+      2. Pulling them into an L fixed the geometry and still failed on device:
+         each link was a 2:1 stadium, so its hole was a narrow slot, and at the
+         30px the exercise rail actually uses the pair merged into one blob.
+
+    What survives 30px is a big open hole, and the roundest shape gives the
+    biggest hole for a given footprint. So: two circles, r=13, centres 18 apart
+    — far enough that each keeps a clear middle, close enough to overlap and
+    read as joined rather than as two separate dots.
+
+    The interlock is real. The circles cross at exactly (32, 22.62) and
+    (32, 41.38). The left ring is broken at the lower crossing and the right
+    ring at the upper one, so each passes in front once and behind once. Break
+    both on the same ring and it becomes one hoop resting on another.
+  -->
+
+  <!-- left ring — broken at (32,41.38), where the right ring passes in front -->
+  <path d="M30.42 42.67 A13 13 0 1 1 33.36 39.86"/>
+
+  <!-- right ring — broken at (32,22.62), where it passes behind the left -->
+  <path d="M33.58 21.33 A13 13 0 1 1 30.65 24.14"/>
 
 </svg>

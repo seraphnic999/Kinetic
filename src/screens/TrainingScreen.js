@@ -123,10 +123,14 @@ const getExerciseBodyPart = (ex) => {
 
 const getExerciseMeta = (ex, st) => {
   if (!st) return '';
+  // The live set count, for the same reason the weight and reps here are live:
+  // add a fourth set and the row should say four, not the three the template
+  // was written with.
+  const sets = (st.setsCompleted ?? 0) + (st.setsLeft ?? 0);
   if (ex.type === EXERCISE_TYPES.REGULAR)
-    return `${st.weight}kg · ${ex.sets} sets · ${st.reps} reps`;
+    return `${st.weight}kg · ${sets} sets · ${st.reps} reps`;
   if (ex.type === EXERCISE_TYPES.COMBO)
-    return `${ex.subExercises?.length ?? 0} exercises · ${ex.sets} sets`;
+    return `${ex.subExercises?.length ?? 0} exercises · ${sets} sets`;
   if (ex.type === EXERCISE_TYPES.WARMUP)
     return `${ex.warmupType} · ${formatTime(ex.duration ?? 180)}`;
   if (ex.type === EXERCISE_TYPES.INTERVALS) {
@@ -247,8 +251,8 @@ function LastTime({ exerciseName, targetReps, currentKg, onTake }) {
 // Sheet, and the action lives in a fixed footer bar — see `renderSheetFooter`.
 // Nothing here scrolls out of reach of the thumb.
 function RegularDetail({ exercise, state, onUpdate }) {
-  const total = exercise.sets ?? 0;
-  const done  = Math.max(0, total - (state.setsLeft ?? 0));
+  const done  = state.setsCompleted ?? 0;
+  const total = done + (state.setsLeft ?? 0);
 
   return (
     <View style={d.body}>
@@ -284,8 +288,8 @@ function RegularDetail({ exercise, state, onUpdate }) {
 // of scrolling. The step is still 2.5 kg, and each weight still carries its
 // pound shadow, because the reason for the shadow does not change with layout.
 function ComboDetail({ exercise, state, onUpdate }) {
-  const total = exercise.sets ?? 0;
-  const done  = Math.max(0, total - (state.setsLeft ?? 0));
+  const done  = state.setsCompleted ?? 0;
+  const total = done + (state.setsLeft ?? 0);
   const subs  = exercise.subExercises ?? [];
 
   // One station open at a time.
@@ -1687,8 +1691,8 @@ function ComboParts({ exercise, tint, max = 4 }) {
         renderItem={({ item }) => {
           const st   = exStates[item.id];
           const done = st?.status === 'complete';
-          const sets = item.sets ?? 0;
-          const made = Math.max(0, sets - (st?.setsLeft ?? 0));
+          const made = st?.setsCompleted ?? 0;
+          const sets = made + (st?.setsLeft ?? 0);
           return (
             <TouchableOpacity
               style={[styles.exRow, done && styles.exRowDone]}
